@@ -40,6 +40,7 @@ import org.sleuthkit.autopsy.coreutils.Logger;
 import org.sleuthkit.datamodel.BlackboardArtifact;
 import org.sleuthkit.datamodel.BlackboardAttribute;
 import org.sleuthkit.datamodel.Content;
+import org.sleuthkit.datamodel.SleuthkitCase;
 import org.sleuthkit.datamodel.TskCoreException;
 
 /**
@@ -272,7 +273,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
      * encountered.
      */
     @Override
-    public void parse(XRYFileReader reader, Content parent) throws IOException, TskCoreException {
+    public void parse(XRYFileReader reader, Content parent, SleuthkitCase currentCase) throws IOException, TskCoreException {
         Path reportPath = reader.getReportPath();
         logger.log(Level.INFO, String.format("[XRY DSP] Processing report at"
                 + " [ %s ]", reportPath.toString()));

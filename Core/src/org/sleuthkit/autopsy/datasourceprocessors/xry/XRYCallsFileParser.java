@@ -1,7 +1,7 @@
 /*
  * Autopsy Forensic Browser
  *
- * Copyright 2019 Basis Technology Corp.
+ * Copyright 2019-2020 Basis Technology Corp.
  * Contact: carrier <at> sleuthkit <dot> org
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,14 +28,19 @@ import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAccessor;
 import java.time.temporal.TemporalQueries;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.logging.Level;
 import org.sleuthkit.autopsy.coreutils.Logger;
-import org.sleuthkit.datamodel.BlackboardArtifact;
+import org.sleuthkit.datamodel.Account;
+import org.sleuthkit.datamodel.Blackboard.BlackboardException;
 import org.sleuthkit.datamodel.BlackboardAttribute;
 import org.sleuthkit.datamodel.Content;
+import org.sleuthkit.datamodel.SleuthkitCase;
 import org.sleuthkit.datamodel.TskCoreException;
+import org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper;
+import org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper.CallMediaType;
+import org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper.CommunicationDirection;
 
 /**
  * Parses XRY Calls files and creates artifacts.
@@ -58,13 +63,13 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
      */
     private enum XryKey {
         NAME_MATCHED("name (matched)", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_NAME),
-        TIME("time", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME),
-        DIRECTION("direction", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DIRECTION),
+        TIME("time", null),
+        DIRECTION("direction", null),
         CALL_TYPE("call type", null),
         NUMBER("number", null),
         TEL("tel", null),
-        TO("to", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_TO),
-        FROM("from", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_FROM),
+        TO("to", null),
+        FROM("from", null),
         DELETED("deleted", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ISDELETED),
         DURATION("duration", null),
         STORAGE("storage", null),
@@ -175,17 +180,35 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
     }
 
     @Override
-    void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent) throws TskCoreException {
-        List<BlackboardAttribute> attributes = new ArrayList<>();
+    void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException, BlackboardException {
+        //Using the methods of CommunicationArtifactsHelper effectively requires
+        //construction of a complex aggregate. A builder is used to alleviate this process 
+        //by decoupling the algorithm that parses the XRY data from the algorithm that
+        //manages all of the input parameters. Furthermore, the builder can manage the 
+        //appropriate defaults. By creating an Object,
+        //we can easily place the appropriate values in the correct positional
+        //arguments. It would be nice if the ArtifactHelpers would provide a service like this
+        //and accept objects in the API rather than an object representation.
+        CallLog.Builder builder = new CallLog.Builder();
+        
         for(XRYKeyValuePair pair : keyValuePairs) {
-            Optional<BlackboardAttribute> attribute = getBlackboardAttribute(pair);
-            if(attribute.isPresent()) {
-                attributes.add(attribute.get());
-            }
+            addToBuilder(pair, builder);
         }
-        if(!attributes.isEmpty()) {
-            BlackboardArtifact artifact = parent.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_CALLLOG);
-            artifact.addAttributes(attributes);
+        
+        if(!builder.isEmpty()) {
+            CallLog callLog = builder.build();
+            CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
+                    currentCase, "XRY DSP", parent, Account.Type.DEVICE);
+            
+            helper.addCalllog(
+                    callLog.getDirection(),
+                    callLog.getCallerID(),
+                    callLog.getCalleeList(),
+                    callLog.getStartTime(),
+                    callLog.getEndTime(),
+                    callLog.getCallType(),
+                    callLog.getOtherAttributes()
+            );
         }
     }
     
@@ -193,7 +216,7 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
      * Creates the appropriate blackboard attribute given a single XRY Key Value
      * pair, if any. Most XRY keys are mapped to an attribute type in the enum above.
      */
-    private Optional<BlackboardAttribute> getBlackboardAttribute(XRYKeyValuePair pair) {
+    private void addToBuilder(XRYKeyValuePair pair, CallLog.Builder builder) {
         XryKey xryKey = XryKey.fromDisplayName(pair.getKey());
         XryNamespace xryNamespace = XryNamespace.NONE;
         if (XryNamespace.contains(pair.getNamespace())) {
@@ -206,35 +229,47 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
                 //Apply the namespace
                 switch (xryNamespace) {
                     case FROM:
-                        return Optional.of(new BlackboardAttribute(
-                                BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_FROM,
-                                PARSER_NAME, pair.getValue()));
+                        builder.setCallerID(pair.getValue());
+                        break;
                     case TO:
-                        return Optional.of(new BlackboardAttribute(
-                                BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_TO,
-                                PARSER_NAME, pair.getValue()));
+                        builder.addCallee(pair.getValue());
+                        break;
                     default:
-                        return Optional.of(new BlackboardAttribute(
+                        builder.addOtherAttributes(new BlackboardAttribute(
                                 BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER,
                                 PARSER_NAME, pair.getValue()));
                 }
+                break;
+            case TO:
+                builder.addCallee(pair.getValue());
+                break;
+            case FROM:
+                builder.setCallerID(pair.getValue());
+                break;
             case TIME:
                 try {
                     //Tranform value to seconds since epoch
                     long dateTimeSinceEpoch = calculateSecondsSinceEpoch(pair.getValue());
-                    return Optional.of(new BlackboardAttribute(xryKey.getType(),
-                            PARSER_NAME, dateTimeSinceEpoch));
+                    builder.setStartTime(dateTimeSinceEpoch);
                 } catch (DateTimeParseException ex) {
                     logger.log(Level.WARNING, String.format("[XRY DSP] Assumption"
                             + " about the date time formatting of call logs is "
                             + "not right. Here is the value [ %s ]", pair.getValue()), ex);
-                    return Optional.empty();
                 }
+                break;
+            case DIRECTION:
+                String direction = pair.getValue().toLowerCase();
+                if(direction.equals("incoming")) {
+                    builder.setDirection(CommunicationDirection.INCOMING);
+                } else {
+                    builder.setDirection(CommunicationDirection.OUTGOING);
+                }
+                break;
             default:
                 //Otherwise, the XryKey enum contains the correct BlackboardAttribute
                 //type.
                 if (xryKey.getType() != null) {
-                    return Optional.of(new BlackboardAttribute(xryKey.getType(),
+                    builder.addOtherAttributes(new BlackboardAttribute(xryKey.getType(),
                             PARSER_NAME, pair.getValue()));
                 }
 
@@ -242,7 +277,6 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
                         + "(in brackets) [ %s ] was recognized but "
                         + "more data or time is needed to finish implementation. Discarding... ",
                         pair));
-                return Optional.empty();
         }
     }
 
@@ -329,5 +363,94 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
             reversedDateTime.insert(0, " ").insert(0, component);
         }
         return reversedDateTime.toString().trim();
+    }
+    
+    private static class CallLog {
+        
+        private final CallLog.Builder builder;
+        
+        private CallLog(CallLog.Builder callLogBuilder) {
+            builder = callLogBuilder;
+        }
+        
+        private String getCallerID() {
+            return this.builder.callerId;
+        }
+        
+        private Collection<String> getCalleeList() {
+            return this.builder.calleeList;
+        }
+        
+        private CommunicationDirection getDirection() {
+            return this.builder.direction;
+        }
+        
+        private long getStartTime() {
+            return this.builder.startTime;
+        }
+        
+        private long getEndTime() {
+            return this.builder.endTime;
+        }
+        
+        private CallMediaType getCallType() {
+            return this.builder.callType;
+        }
+        
+        private Collection<BlackboardAttribute> getOtherAttributes() {
+            return this.builder.otherAttributes;
+        }
+        
+        //Manages and aggregates all of the parameters that will be used
+        //to call CommunicationArtifactsHelper.addCalllog.
+        private static class Builder {
+            private String callerId;
+            private final Collection<String> calleeList;
+            private CommunicationDirection direction;
+            private long startTime;
+            private long endTime;
+            private CallMediaType callType;
+            private final Collection<BlackboardAttribute> otherAttributes;
+            
+            public Builder() {
+                calleeList = new ArrayList<>();
+                otherAttributes = new ArrayList<>();
+                startTime = 0L;
+                endTime = 0L;
+                callType = CallMediaType.UNKNOWN;
+                direction = CommunicationDirection.UNKNOWN;
+                callerId = "";
+            }
+            
+            private void setCallerID(String callerID) {
+                this.callerId = callerID;
+            }
+            
+            private void addCallee(String callee) {
+                this.calleeList.add(callee);
+            }
+            
+            private void setStartTime(long startTime) {
+                this.startTime = startTime;
+            }
+            
+            private void setDirection(CommunicationDirection direction) {
+                this.direction = direction;
+            }
+            
+            private void addOtherAttributes(BlackboardAttribute attr) {
+                otherAttributes.add(attr);
+            }
+            
+            private boolean isEmpty() {
+                return callerId.isEmpty() && calleeList.isEmpty() && otherAttributes.isEmpty()
+                        && startTime == 0L && endTime == 0L && callType.equals(CallMediaType.UNKNOWN)
+                        && direction.equals(CommunicationDirection.UNKNOWN);
+            }
+            
+            private CallLog build() {
+                return new CallLog(this);
+            }
+        }
     }
 }

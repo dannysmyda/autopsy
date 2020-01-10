@@ -23,8 +23,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
+import org.sleuthkit.autopsy.casemodule.Case;
+import org.sleuthkit.autopsy.casemodule.NoCurrentCaseException;
 import org.sleuthkit.autopsy.coreutils.Logger;
+import org.sleuthkit.datamodel.Blackboard.BlackboardException;
 import org.sleuthkit.datamodel.Content;
+import org.sleuthkit.datamodel.SleuthkitCase;
 import org.sleuthkit.datamodel.TskCoreException;
 
 /**
@@ -38,7 +42,7 @@ abstract class AbstractSingleEntityParser implements XRYFileParser {
     protected static final String PARSER_NAME = "XRY DSP";
 
     @Override
-    public void parse(XRYFileReader reader, Content parent) throws IOException, TskCoreException {
+    public void parse(XRYFileReader reader, Content parent, SleuthkitCase currentCase) throws IOException, TskCoreException, BlackboardException {
         Path reportPath = reader.getReportPath();
         logger.log(Level.INFO, String.format("[XRY DSP] Processing report at [ %s ]", reportPath.toString()));
 
@@ -94,7 +98,7 @@ abstract class AbstractSingleEntityParser implements XRYFileParser {
             }
             
             if(!keyValuePairs.isEmpty()) {
-                makeArtifact(keyValuePairs, parent);
+                makeArtifact(keyValuePairs, parent, currentCase);
             }
         }
     }
@@ -125,6 +129,6 @@ abstract class AbstractSingleEntityParser implements XRYFileParser {
     /**
      * Makes an artifact from the parsed key value pairs.
      */
-    abstract void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent) throws TskCoreException;
+    abstract void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException, BlackboardException;
 
 }

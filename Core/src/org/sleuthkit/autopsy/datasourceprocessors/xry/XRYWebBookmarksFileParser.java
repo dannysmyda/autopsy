@@ -26,6 +26,7 @@ import java.util.Optional;
 import org.sleuthkit.datamodel.BlackboardAttribute;
 import org.sleuthkit.datamodel.BlackboardArtifact;
 import org.sleuthkit.datamodel.Content;
+import org.sleuthkit.datamodel.SleuthkitCase;
 import org.sleuthkit.datamodel.TskCoreException;
 
 /**
@@ -67,7 +68,7 @@ final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
     }
     
     @Override
-    void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent) throws TskCoreException {
+    void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException {
         List<BlackboardAttribute> attributes = new ArrayList<>();
         for(XRYKeyValuePair pair : keyValuePairs) {
             Optional<BlackboardAttribute> attribute = getBlackboardAttribute(pair);
