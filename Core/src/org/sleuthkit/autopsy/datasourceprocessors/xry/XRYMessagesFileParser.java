@@ -29,11 +29,14 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAccessor;
 import java.time.temporal.TemporalQueries;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.logging.Level;
 import org.sleuthkit.autopsy.coreutils.Logger;
@@ -283,8 +286,10 @@ final class XRYMessagesFileParser implements XRYFileParser {
 
         while (reader.hasNextEntity()) {
             String xryEntity = reader.nextEntity();
-            List<BlackboardAttribute> attributes = getBlackboardAttributes(xryEntity, reader, referenceNumbersSeen);
+            List<XRYKeyValuePair> pairs = getXRYKeyValuePairs(xryEntity, reader, referenceNumbersSeen);
             //Only create artifacts with non-empty attributes.
+            
+            //Map them using a MessageBuilder.
             if (!attributes.isEmpty()) {
                 BlackboardArtifact artifact = parent.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_MESSAGE);
                 artifact.addAttributes(attributes);
@@ -296,72 +301,69 @@ final class XRYMessagesFileParser implements XRYFileParser {
      * Extracts all blackboard attributes from the XRY Entity. This function will
      * unify any segmented text, if need be.
      */
-    private List<BlackboardAttribute> getBlackboardAttributes(String xryEntity,
+    private List<XRYKeyValuePair> getXRYKeyValuePairs(String xryEntity,
             XRYFileReader reader, Set<Integer> referenceValues) throws IOException {
-        String[] xryLines = xryEntity.split("\n");
+        Queue<String> xryLines = new ArrayDeque<>(Arrays.asList(xryEntity.split("\n")));
         //First line of the entity is the title, each XRY entity is non-empty.
-        logger.log(Level.INFO, String.format("[XRY DSP] Processing [ %s ]", xryLines[0]));
+        logger.log(Level.INFO, String.format("[XRY DSP] Processing [ %s ]", xryLines.poll()));
 
-        List<BlackboardAttribute> attributes = new ArrayList<>();
-
-        //Count the key value pairs in the XRY entity.
-        int keyCount = getCountOfKeyValuePairs(xryLines);
-        for (int i = 1; i <= keyCount; i++) {
-            //Get the ith key value pair in the entity. Always expect to have 
-            //a valid value.
-            XRYKeyValuePair pair = getKeyValuePairByIndex(xryLines, i).get();
-            if (XryMetaKey.contains(pair.getKey())) {
-                //Skip meta keys, they are being handled seperately.
+        List<XRYKeyValuePair> result = new ArrayList<>();
+        String namespace = "";
+        //Used to unify segmented text.
+        while(!xryLines.isEmpty()) {
+            String xryLine = xryLines.poll();
+            if (XryNamespace.contains(xryLine)) {
+                namespace = xryLine.trim();
+                continue;
+            } else if (!XRYKeyValuePair.isPair(xryLine)) {
+                logger.log(Level.SEVERE, String.format("[XRY DSP] Expected a key value "
+                        + "pair on this line (in brackets) [ %s ], but one was not detected."
+                        + " Discarding...", xryLine));
                 continue;
             }
 
-            if (!XryKey.contains(pair.getKey())) {
-                logger.log(Level.WARNING, String.format("[XRY DSP] The following key, "
-                        + "value pair (in brackets) [ %s ], "
-                        + "was not recognized. Discarding...", pair));
-                continue;
-            }
+            XRYKeyValuePair pair = XRYKeyValuePair.from(xryLine, namespace);
+            if(validatePair(pair)) {
+                //Build up multiple lines.
+                StringBuilder builder = new StringBuilder(pair.getValue());
+                while (!xryLine.isEmpty()
+                        && !XRYKeyValuePair.isPair(xryLines.peek())
+                        && !XryNamespace.contains(xryLines.peek())) {
+                    builder.append(" ").append(xryLines.poll().trim());
+                }
 
-            if (pair.getValue().isEmpty()) {
-                logger.log(Level.WARNING, String.format("[XRY DSP] The following key "
-                        + "(in brackets) [ %s ] was recognized, but the value "
-                        + "was empty. Discarding...", pair.getKey()));
-                continue;
-            }
-
-            //Assume text and message are the only fields that can be segmented
-            //among multiple XRY entities.
-            if (pair.hasKey(XryKey.TEXT.getDisplayName())
-                    || pair.hasKey(XryKey.MESSAGE.getDisplayName())) {
-                String segmentedText = getSegmentedText(xryLines, reader, referenceValues);
-                pair = new XRYKeyValuePair(pair.getKey(),
-                        //Assume text is segmented by word.
-                        pair.getValue() + " " + segmentedText,
-                        pair.getNamespace());
-            }
-
-            //Get the corresponding blackboard attribute, if any.
-            Optional<BlackboardAttribute> attribute = getBlackboardAttribute(pair);
-            if (attribute.isPresent()) {
-                attributes.add(attribute.get());
+                //Assume text and message are the only fields that can be segmented
+                //among multiple XRY entities.
+                if (pair.hasKey(XryKey.TEXT.getDisplayName())
+                        || pair.hasKey(XryKey.MESSAGE.getDisplayName())) {
+                    //Will reuse the same builder to add any segmented text.
+                    getSegmentedText(xryEntity, reader, referenceValues, builder);
+                }
+                
+                pair = new XRYKeyValuePair(pair.getKey(), builder.toString(), pair.getNamespace());
+                result.add(pair);
             }
         }
 
-        return attributes;
+        return result;
     }
-
-    /**
-     * Counts the key value pairs in an XRY entity. Skips counting the first
-     * line as it is assumed to be the title.
-     */
-    private Integer getCountOfKeyValuePairs(String[] xryEntity) {
-        int count = 0;
-        for (int i = 1; i < xryEntity.length; i++) {
-            if (XRYKeyValuePair.isPair(xryEntity[i])) {
-                count++;
-            }
+    
+    private boolean validatePair(XRYKeyValuePair pair) {
+        if (XryMetaKey.contains(pair.getKey())) {
+            //Meta Keys are handled differently.
+            return false;
+        } else if (!XryKey.contains(pair.getKey())) {
+            logger.log(Level.WARNING, String.format("[XRY DSP] The following key, "
+                    + "value pair (in brackets) [ %s ], "
+                    + "was not recognized. Discarding...", pair));
+            return false;
+        } else if (pair.getValue().isEmpty()) {
+            logger.log(Level.WARNING, String.format("[XRY DSP] The following key "
+                    + "(in brackets) [ %s ] was recognized, but the value "
+                    + "was empty. Discarding...", pair.getKey()));
+            return false;
         }
-        return count;
+        return true;
     }
 
     /**
@@ -374,12 +376,13 @@ final class XRYMessagesFileParser implements XRYFileParser {
      * @return
      * @throws IOException
      */
-    private String getSegmentedText(String[] xryEntity, XRYFileReader reader,
-            Set<Integer> referenceNumbersSeen) throws IOException {
-        Optional<Integer> referenceNumber = getMetaKeyValue(xryEntity, XryMetaKey.REFERENCE_NUMBER);
+    private void getSegmentedText(String xryEntity, XRYFileReader reader,
+            Set<Integer> referenceNumbersSeen, StringBuilder builder) throws IOException {
+        String[] xryLines = xryEntity.split("\n");
+        Optional<Integer> referenceNumber = getMetaKeyValue(xryLines, XryMetaKey.REFERENCE_NUMBER);
         //Check if there is any segmented text.
         if (!referenceNumber.isPresent()) {
-            return "";
+            return;
         }
 
         logger.log(Level.INFO, String.format("[XRY DSP] Message entity "
@@ -395,15 +398,13 @@ final class XRYMessagesFileParser implements XRYFileParser {
 
         referenceNumbersSeen.add(referenceNumber.get());
 
-        Optional<Integer> segmentNumber = getMetaKeyValue(xryEntity, XryMetaKey.SEGMENT_NUMBER);
+        Optional<Integer> segmentNumber = getMetaKeyValue(xryLines, XryMetaKey.SEGMENT_NUMBER);
         if (!segmentNumber.isPresent()) {
             logger.log(Level.SEVERE, String.format("No segment "
                     + "number was found on the message entity"
                     + "with reference number [%d]", referenceNumber.get()));
-            return "";
+            return;
         }
-
-        StringBuilder segmentedText = new StringBuilder();
 
         int currentSegmentNumber = segmentNumber.get();
         while (reader.hasNextEntity()) {
@@ -423,9 +424,10 @@ final class XRYMessagesFileParser implements XRYFileParser {
             reader.nextEntity();
 
             Optional<Integer> nextSegmentNumber = getMetaKeyValue(nextEntityLines, XryMetaKey.SEGMENT_NUMBER);
+            Queue<String> nextXryEntityLines = new ArrayDeque<>(Arrays.asList(nextEntityLines));
 
             logger.log(Level.INFO, String.format("[XRY DSP] Processing [ %s ] "
-                    + "segment with reference number [ %d ]", nextEntityLines[0], referenceNumber.get()));
+                    + "segment with reference number [ %d ]", nextXryEntityLines.poll(), referenceNumber.get()));
 
             if (!nextSegmentNumber.isPresent()) {
                 logger.log(Level.SEVERE, String.format("[XRY DSP] Segment with reference"
@@ -438,12 +440,21 @@ final class XRYMessagesFileParser implements XRYFileParser {
                         + "text will be out of order.", nextSegmentNumber.get(), currentSegmentNumber));
             }
 
-            int keyCount = getCountOfKeyValuePairs(nextEntityLines);
-            for (int i = 1; i <= keyCount; i++) {
-                XRYKeyValuePair pair = getKeyValuePairByIndex(nextEntityLines, i).get();
-                if (pair.hasKey(XryKey.TEXT.getDisplayName())
+            while(!nextXryEntityLines.isEmpty()) {
+                String nextXryEntityLine = nextXryEntityLines.poll();
+                
+                if(XRYKeyValuePair.isPair(nextXryEntityLine)) {
+                    XRYKeyValuePair pair = XRYKeyValuePair.from(nextXryEntityLine);
+                    
+                    if (pair.hasKey(XryKey.TEXT.getDisplayName())
                         || pair.hasKey(XryKey.MESSAGE.getDisplayName())) {
-                    segmentedText.append(pair.getValue()).append(' ');
+                        //Build up multi-line text.
+                        while (!nextXryEntityLines.isEmpty()
+                                && !XRYKeyValuePair.isPair(nextXryEntityLines.peek())
+                                && !XryNamespace.contains(nextXryEntityLines.peek())) {
+                            builder.append(" ").append(nextXryEntityLines.poll().trim());
+                        }
+                    }
                 }
             }
 
@@ -451,13 +462,6 @@ final class XRYMessagesFileParser implements XRYFileParser {
                 currentSegmentNumber = nextSegmentNumber.get();
             }
         }
-
-        //Remove the trailing space.
-        if (segmentedText.length() > 0) {
-            segmentedText.setLength(segmentedText.length() - 1);
-        }
-
-        return segmentedText.toString();
     }
 
     /**
@@ -483,53 +487,6 @@ final class XRYMessagesFileParser implements XRYFileParser {
                 }
             }
         }
-        return Optional.empty();
-    }
-
-    /**
-     * Extracts the ith XRY Key Value pair in the XRY Entity. 
-     * 
-     * The total number of pairs can be determined via getCountOfKeyValuePairs().
-     * 
-     * @param xryLines XRY entity.
-     * @param index The requested Key Value pair.
-     * @return
-     */
-    private Optional<XRYKeyValuePair> getKeyValuePairByIndex(String[] xryLines, int index) {
-        int pairsParsed = 0;
-        String namespace = "";
-        for (int i = 1; i < xryLines.length; i++) {
-            String xryLine = xryLines[i];
-            if (XryNamespace.contains(xryLine)) {
-                namespace = xryLine.trim();
-                continue;
-            }
-
-            if (!XRYKeyValuePair.isPair(xryLine)) {
-                logger.log(Level.SEVERE, String.format("[XRY DSP] Expected a key value "
-                        + "pair on this line (in brackets) [ %s ], but one was not detected."
-                        + " Discarding...", xryLine));
-                continue;
-            }
-
-            XRYKeyValuePair pair = XRYKeyValuePair.from(xryLine);
-            String value = pair.getValue();
-            //Build up multiple lines.
-            for (; (i + 1) < xryLines.length
-                    && !XRYKeyValuePair.isPair(xryLines[i + 1])
-                    && !XryNamespace.contains(xryLines[i + 1]); i++) {
-                String continuedValue = xryLines[i + 1].trim();
-                //Assume multi lined values are split by word.
-                value = value + " " + continuedValue;
-            }
-
-            pair = new XRYKeyValuePair(pair.getKey(), value, namespace);
-            pairsParsed++;
-            if (pairsParsed == index) {
-                return Optional.of(pair);
-            }
-        }
-
         return Optional.empty();
     }
 
