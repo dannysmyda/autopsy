@@ -18,11 +18,13 @@
  */
 package org.sleuthkit.autopsy.datasourceprocessors.xry;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.logging.Level;
 import org.sleuthkit.autopsy.coreutils.Logger;
 import org.sleuthkit.datamodel.BlackboardArtifact;
@@ -91,18 +93,24 @@ final class XRYDeviceGenInfoFileParser extends AbstractSingleEntityParser {
     
     @Override
     void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException {
+        Queue<XRYKeyValuePair> keyValueQueue = new ArrayDeque<>(keyValuePairs);
         List<BlackboardAttribute> attributes = new ArrayList<>();
-        for(int i = 0; i < keyValuePairs.size(); i+=2) {
+        while(!keyValueQueue.isEmpty()) {
+            XRYKeyValuePair pair = keyValueQueue.poll();
+            
             Optional<BlackboardAttribute> attribute;
-            if(i + 1 == keyValuePairs.size()) {
-                attribute = getBlackboardAttribute(keyValuePairs.get(i));
+            if(keyValueQueue.isEmpty()) {
+                attribute = getBlackboardAttribute(pair);
             } else {
-                attribute = getBlackboardAttribute(keyValuePairs.get(i), keyValuePairs.get(i+1));
+                XRYKeyValuePair complementaryPair = keyValueQueue.poll();
+                attribute = getBlackboardAttribute(pair, complementaryPair);
             }
+            
             if(attribute.isPresent()) {
                 attributes.add(attribute.get());
             }
         }
+        
         if(!attributes.isEmpty()) {
             BlackboardArtifact artifact = parent.newArtifact(
                     BlackboardArtifact.ARTIFACT_TYPE.TSK_DEVICE_INFO);

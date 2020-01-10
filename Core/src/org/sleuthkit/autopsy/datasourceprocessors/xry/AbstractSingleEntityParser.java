@@ -1,7 +1,7 @@
 /*
  * Autopsy Forensic Browser
  *
- * Copyright 2019 Basis Technology Corp.
+ * Copyright 2019-2020 Basis Technology Corp.
  * Contact: carrier <at> sleuthkit <dot> org
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,11 +20,12 @@ package org.sleuthkit.autopsy.datasourceprocessors.xry;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Queue;
 import java.util.logging.Level;
-import org.sleuthkit.autopsy.casemodule.Case;
-import org.sleuthkit.autopsy.casemodule.NoCurrentCaseException;
 import org.sleuthkit.autopsy.coreutils.Logger;
 import org.sleuthkit.datamodel.Blackboard.BlackboardException;
 import org.sleuthkit.datamodel.Content;
@@ -48,18 +49,18 @@ abstract class AbstractSingleEntityParser implements XRYFileParser {
 
         while (reader.hasNextEntity()) {
             String xryEntity = reader.nextEntity();
-            String[] xryLines = xryEntity.split("\n");
+            //Queue up all the XRY lines for processing.
+            Queue<String> xryLines = new ArrayDeque<>(Arrays.asList(xryEntity.split("\n")));
+            List<XRYKeyValuePair> parsedPairs = new ArrayList<>();
 
-            List<XRYKeyValuePair> keyValuePairs = new ArrayList<>();
-
-            //First line of the entity is the title, the entity will always be non-empty.
-            logger.log(Level.INFO, String.format("[XRY DSP] Processing [ %s ]", xryLines[0]));
+            //First line of the entity is the title, the entity will always be non-empty. This is
+            //one of XRYFileReader's invariants.
+            logger.log(Level.INFO, String.format("[XRY DSP] Processing [ %s ]", xryLines.poll()));
 
             String namespace = "";
             //Process each line, searching for a key value pair or a namespace.
-            for (int i = 1; i < xryLines.length; i++) {
-                String xryLine = xryLines[i];
-
+            while(!xryLines.isEmpty()) {
+                String xryLine = xryLines.poll();
                 String candidateNamespace = xryLine.trim();
                 //Check if the line is a namespace, which gives context to the keys
                 //that follow.
@@ -86,7 +87,7 @@ abstract class AbstractSingleEntityParser implements XRYFileParser {
                     continue;
                 }
 
-                //Empty values are meaningless for blackboard attributes.
+                //Empty values are meaningless for artifacts.
                 if (pair.getValue().isEmpty()) {
                     logger.log(Level.WARNING, String.format("[XRY DSP] The following key value pair"
                             + "(in brackets) [ %s ] was recognized, but the value was empty. Discarding...", 
@@ -94,11 +95,11 @@ abstract class AbstractSingleEntityParser implements XRYFileParser {
                     continue;
                 }
                 
-                keyValuePairs.add(pair);
+                parsedPairs.add(pair);
             }
             
-            if(!keyValuePairs.isEmpty()) {
-                makeArtifact(keyValuePairs, parent, currentCase);
+            if(!parsedPairs.isEmpty()) {
+                makeArtifact(parsedPairs, parent, currentCase);
             }
         }
     }

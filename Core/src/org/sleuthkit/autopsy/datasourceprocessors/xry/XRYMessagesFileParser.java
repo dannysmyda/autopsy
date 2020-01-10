@@ -348,6 +348,11 @@ final class XRYMessagesFileParser implements XRYFileParser {
         return result;
     }
     
+    /**
+     * 
+     * @param pair
+     * @return 
+     */
     private boolean validatePair(XRYKeyValuePair pair) {
         if (XryMetaKey.contains(pair.getKey())) {
             //Meta Keys are handled differently.
@@ -412,6 +417,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
             String nextEntity = reader.peek();
             String[] nextEntityLines = nextEntity.split("\n");
             Optional<Integer> nextReferenceNumber = getMetaKeyValue(nextEntityLines, XryMetaKey.REFERENCE_NUMBER);
+            Optional<Integer> nextSegmentNumber = getMetaKeyValue(nextEntityLines, XryMetaKey.SEGMENT_NUMBER);
 
             if (!nextReferenceNumber.isPresent()
                     || !Objects.equals(nextReferenceNumber, referenceNumber)) {
@@ -422,10 +428,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
 
             //Consume the entity, it is a part of the message thread.
             reader.nextEntity();
-
-            Optional<Integer> nextSegmentNumber = getMetaKeyValue(nextEntityLines, XryMetaKey.SEGMENT_NUMBER);
             Queue<String> nextXryEntityLines = new ArrayDeque<>(Arrays.asList(nextEntityLines));
-
             logger.log(Level.INFO, String.format("[XRY DSP] Processing [ %s ] "
                     + "segment with reference number [ %d ]", nextXryEntityLines.poll(), referenceNumber.get()));
 
@@ -442,18 +445,22 @@ final class XRYMessagesFileParser implements XRYFileParser {
 
             while(!nextXryEntityLines.isEmpty()) {
                 String nextXryEntityLine = nextXryEntityLines.poll();
+                //We are searching for TEXT and MESSAGE pairs, continue if 
+                //this line is not these pairs.
+                if(!XRYKeyValuePair.isPair(nextXryEntityLine)) {
+                    continue;
+                }
                 
-                if(XRYKeyValuePair.isPair(nextXryEntityLine)) {
-                    XRYKeyValuePair pair = XRYKeyValuePair.from(nextXryEntityLine);
-                    
-                    if (pair.hasKey(XryKey.TEXT.getDisplayName())
-                        || pair.hasKey(XryKey.MESSAGE.getDisplayName())) {
-                        //Build up multi-line text.
-                        while (!nextXryEntityLines.isEmpty()
-                                && !XRYKeyValuePair.isPair(nextXryEntityLines.peek())
-                                && !XryNamespace.contains(nextXryEntityLines.peek())) {
-                            builder.append(" ").append(nextXryEntityLines.poll().trim());
-                        }
+                XRYKeyValuePair pair = XRYKeyValuePair.from(nextXryEntityLine);
+
+                if (pair.hasKey(XryKey.TEXT.getDisplayName())
+                    || pair.hasKey(XryKey.MESSAGE.getDisplayName())) {
+                    builder.append(" ").append(pair.getValue());
+                    //Build up multi-line text.
+                    while (!nextXryEntityLines.isEmpty()
+                            && !XRYKeyValuePair.isPair(nextXryEntityLines.peek())
+                            && !XryNamespace.contains(nextXryEntityLines.peek())) {
+                        builder.append(" ").append(nextXryEntityLines.poll().trim());
                     }
                 }
             }
