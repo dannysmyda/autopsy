@@ -57,120 +57,6 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
     private static final String DEVICE_LOCALE = "(device)";
     private static final String NETWORK_LOCALE = "(network)";
 
-    /**
-     * All of the known XRY keys for call reports and their corresponding
-     * blackboard attribute types, if any.
-     */
-    private enum XryKey {
-        //This enum doubles down as a map for attribute types and also a
-        //Set for testing key membership.
-        NAME_MATCHED("name (matched)", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_NAME),
-        TIME("time", null),
-        DIRECTION("direction", null),
-        CALL_TYPE("call type", null),
-        NUMBER("number", null),
-        TEL("tel", null),
-        TO("to", null),
-        FROM("from", null),
-        DELETED("deleted", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ISDELETED),
-        DURATION("duration", null),
-        STORAGE("storage", null),
-        INDEX("index", null),
-        TYPE("type", null),
-        NAME("name", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_NAME);
-
-        private final String name;
-        private final BlackboardAttribute.ATTRIBUTE_TYPE type;
-
-        XryKey(String name, BlackboardAttribute.ATTRIBUTE_TYPE type) {
-            this.name = name;
-            this.type = type;
-        }
-
-        public BlackboardAttribute.ATTRIBUTE_TYPE getType() {
-            return type;
-        }
-
-        /**
-         * Indicates if the display name of the XRY key is a recognized type.
-         */
-        public static boolean contains(String key) {
-            try {
-                XryKey.fromDisplayName(key);
-                return true;
-            } catch (IllegalArgumentException ex) {
-                return false;
-            }
-        }
-
-        /**
-         * Matches the display name of the xry key to the appropriate enum type.
-         *
-         * It is assumed that XRY key string is recognized. Otherwise, an
-         * IllegalArgumentException is thrown. Test all membership with
-         * contains() before hand.
-         */
-        public static XryKey fromDisplayName(String key) {
-            String normalizedKey = key.trim().toLowerCase();
-            for (XryKey keyChoice : XryKey.values()) {
-                if (normalizedKey.equals(keyChoice.name)) {
-                    return keyChoice;
-                }
-            }
-
-            throw new IllegalArgumentException(String.format("Key [%s] was not found."
-                    + " All keys should be tested with contains.", key));
-        }
-    }
-
-    /**
-     * All known XRY namespaces for call reports.
-     */
-    private enum XryNamespace {
-        TO("to"),
-        FROM("from"),
-        NONE(null);
-
-        private final String name;
-
-        XryNamespace(String name) {
-            this.name = name;
-        }
-
-        /**
-         * Indicates if the display name of the XRY namespace is a recognized
-         * type.
-         */
-        public static boolean contains(String xryNamespace) {
-            try {
-                XryNamespace.fromDisplayName(xryNamespace);
-                return true;
-            } catch (IllegalArgumentException ex) {
-                return false;
-            }
-        }
-
-        /**
-         * Matches the display name of the xry namespace to the appropriate enum
-         * type.
-         *
-         * It is assumed that XRY namespace string is recognized. Otherwise, an
-         * IllegalArgumentException is thrown. Test all membership with
-         * contains() before hand.
-         */
-        public static XryNamespace fromDisplayName(String xryNamespace) {
-            String normalizedNamespace = xryNamespace.trim().toLowerCase();
-            for (XryNamespace keyChoice : XryNamespace.values()) {
-                if (normalizedNamespace.equals(keyChoice.name)) {
-                    return keyChoice;
-                }
-            }
-
-            throw new IllegalArgumentException(String.format("Key [%s] was not found."
-                    + " All keys should be tested with contains.", xryNamespace));
-        }
-    }
-
     @Override
     boolean canProcess(XRYKeyValuePair pair) {
         return XryKey.contains(pair.getKey());
@@ -363,6 +249,9 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
         return reversedDateTime.toString().trim();
     }
 
+    /**
+     * 
+     */
     private static class CallLog {
 
         private final CallLog.Builder builder;
@@ -450,6 +339,118 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
             private CallLog build() {
                 return new CallLog(this);
             }
+        }
+    }
+    
+    /**
+     * All of the known XRY keys for call reports and their corresponding
+     * blackboard attribute types, if any.
+     */
+    private enum XryKey {
+        NAME_MATCHED("name (matched)", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_NAME),
+        TIME("time", null),
+        DIRECTION("direction", null),
+        CALL_TYPE("call type", null),
+        NUMBER("number", null),
+        TEL("tel", null),
+        TO("to", null),
+        FROM("from", null),
+        DELETED("deleted", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ISDELETED),
+        DURATION("duration", null),
+        STORAGE("storage", null),
+        INDEX("index", null),
+        TYPE("type", null),
+        NAME("name", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_NAME);
+
+        private final String name;
+        private final BlackboardAttribute.ATTRIBUTE_TYPE type;
+
+        XryKey(String name, BlackboardAttribute.ATTRIBUTE_TYPE type) {
+            this.name = name;
+            this.type = type;
+        }
+
+        public BlackboardAttribute.ATTRIBUTE_TYPE getType() {
+            return type;
+        }
+
+        /**
+         * Indicates if the display name of the XRY key is a recognized type.
+         */
+        public static boolean contains(String key) {
+            try {
+                XryKey.fromDisplayName(key);
+                return true;
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+        }
+
+        /**
+         * Matches the display name of the XRY key to the appropriate enum type.
+         *
+         * It is assumed that XRY key string is recognized. Otherwise, an
+         * IllegalArgumentException is thrown. Test all membership with
+         * contains() before hand.
+         */
+        public static XryKey fromDisplayName(String key) {
+            String normalizedKey = key.trim().toLowerCase();
+            for (XryKey keyChoice : XryKey.values()) {
+                if (normalizedKey.equals(keyChoice.name)) {
+                    return keyChoice;
+                }
+            }
+
+            throw new IllegalArgumentException(String.format("Key [%s] was not found."
+                    + " All keys should be tested with contains.", key));
+        }
+    }
+
+    /**
+     * All known XRY namespaces for call reports.
+     */
+    private enum XryNamespace {
+        TO("to"),
+        FROM("from"),
+        NONE(null);
+
+        private final String name;
+
+        XryNamespace(String name) {
+            this.name = name;
+        }
+
+        /**
+         * Indicates if the display name of the XRY namespace is a recognized
+         * type.
+         */
+        public static boolean contains(String xryNamespace) {
+            try {
+                XryNamespace.fromDisplayName(xryNamespace);
+                return true;
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+        }
+
+        /**
+         * Matches the display name of the xry namespace to the appropriate enum
+         * type.
+         *
+         * It is assumed that XRY namespace string is recognized. Otherwise, an
+         * IllegalArgumentException is thrown. Test all membership with
+         * contains() before hand.
+         */
+        public static XryNamespace fromDisplayName(String xryNamespace) {
+            String normalizedNamespace = xryNamespace.trim().toLowerCase();
+            for (XryNamespace keyChoice : XryNamespace.values()) {
+                if (normalizedNamespace.equals(keyChoice.name)) {
+                    return keyChoice;
+                }
+            }
+
+            throw new IllegalArgumentException(String.format("Key [%s] was not found."
+                    + " All keys should be tested with contains.", xryNamespace));
         }
     }
 }

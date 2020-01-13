@@ -33,57 +33,6 @@ import org.sleuthkit.datamodel.blackboardutils.WebBrowserArtifactsHelper;
  */
 final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
 
-    private enum XRYKey {
-        //This enum doubles down as a map for attribute types and also a
-        //Set for testing key membership.
-        APPLICATION("application", null),
-        DOMAIN("domain", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DOMAIN),
-        WEB_ADDRESS("web address", null);
-
-        private final String name;
-        private final BlackboardAttribute.ATTRIBUTE_TYPE type;
-
-        XRYKey(String name, BlackboardAttribute.ATTRIBUTE_TYPE type) {
-            this.name = name;
-            this.type = type;
-        }
-
-        public BlackboardAttribute.ATTRIBUTE_TYPE getType() {
-            return type;
-        }
-
-        /**
-         * Indicates if the display name of the XRY key is a recognized type.
-         */
-        public static boolean contains(String key) {
-            try {
-                XRYKey.fromDisplayName(key);
-                return true;
-            } catch (IllegalArgumentException ex) {
-                return false;
-            }
-        }
-
-        /**
-         * Matches the display name of the xry key to the appropriate enum type.
-         *
-         * It is assumed that XRY key string is recognized. Otherwise, an
-         * IllegalArgumentException is thrown. Test all membership with
-         * contains() before hand.
-         */
-        public static XRYKey fromDisplayName(String key) {
-            String normalizedKey = key.trim().toLowerCase();
-            for (XRYKey keyChoice : XRYKey.values()) {
-                if (normalizedKey.equals(keyChoice.name)) {
-                    return keyChoice;
-                }
-            }
-
-            throw new IllegalArgumentException(String.format("Key [%s] was not found."
-                    + " All keys should be tested with contains.", key));
-        }
-    }
-
     @Override
     boolean canProcess(XRYKeyValuePair pair) {
         return XRYKey.contains(pair.getKey());
@@ -140,6 +89,9 @@ final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
         }
     }
 
+    /**
+     * 
+     */
     private static class WebBookmark {
 
         private final WebBookmark.Builder builder;
@@ -209,4 +161,57 @@ final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
             }
         }
     }
+    
+    /**
+     * All of the known keys for web bookmark reports.
+     */
+    private enum XRYKey {
+        APPLICATION("application", null),
+        DOMAIN("domain", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DOMAIN),
+        WEB_ADDRESS("web address", null);
+
+        private final String name;
+        private final BlackboardAttribute.ATTRIBUTE_TYPE type;
+
+        XRYKey(String name, BlackboardAttribute.ATTRIBUTE_TYPE type) {
+            this.name = name;
+            this.type = type;
+        }
+
+        public BlackboardAttribute.ATTRIBUTE_TYPE getType() {
+            return type;
+        }
+
+        /**
+         * Indicates if the display name of the XRY key is a recognized type.
+         */
+        public static boolean contains(String key) {
+            try {
+                XRYKey.fromDisplayName(key);
+                return true;
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+        }
+
+        /**
+         * Matches the display name of the xry key to the appropriate enum type.
+         *
+         * It is assumed that XRY key string is recognized. Otherwise, an
+         * IllegalArgumentException is thrown. Test all membership with
+         * contains() before hand.
+         */
+        public static XRYKey fromDisplayName(String key) {
+            String normalizedKey = key.trim().toLowerCase();
+            for (XRYKey keyChoice : XRYKey.values()) {
+                if (normalizedKey.equals(keyChoice.name)) {
+                    return keyChoice;
+                }
+            }
+
+            throw new IllegalArgumentException(String.format("Key [%s] was not found."
+                    + " All keys should be tested with contains.", key));
+        }
+    }
+
 }

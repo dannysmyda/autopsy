@@ -38,68 +38,6 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
 
     private static final Logger logger = Logger.getLogger(XRYContactsFileParser.class.getName());
 
-    private enum XRYKey {
-        //This enum doubles down as a map for attribute types and also a
-        //Set for testing key membership.
-        NAME("name", null),
-        TEL("tel", null),
-        MOBILE("mobile", null),
-        HOME("home", null),
-        RELATED_APPLICATION("related application", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PROG_NAME),
-        ADDRESS_HOME("address home", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_LOCATION),
-        EMAIL_HOME("email home", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_EMAIL_HOME),
-        DELETED("deleted", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ISDELETED),
-        //Ignoring or need more information to decide.
-        STORAGE("storage", null),
-        OTHER("other", null),
-        PICTURE("picture", null),
-        INDEX("index", null),
-        ACCOUNT_NAME("account name", null);
-
-        private final String name;
-        private final BlackboardAttribute.ATTRIBUTE_TYPE type;
-
-        XRYKey(String name, BlackboardAttribute.ATTRIBUTE_TYPE type) {
-            this.name = name;
-            this.type = type;
-        }
-
-        public BlackboardAttribute.ATTRIBUTE_TYPE getType() {
-            return type;
-        }
-
-        /**
-         * Indicates if the display name of the XRY key is a recognized type.
-         */
-        public static boolean contains(String key) {
-            try {
-                XRYKey.fromDisplayName(key);
-                return true;
-            } catch (IllegalArgumentException ex) {
-                return false;
-            }
-        }
-
-        /**
-         * Matches the display name of the xry key to the appropriate enum type.
-         *
-         * It is assumed that XRY key string is recognized. Otherwise, an
-         * IllegalArgumentException is thrown. Test all membership with
-         * contains() before hand.
-         */
-        public static XRYKey fromDisplayName(String key) {
-            String normalizedKey = key.trim().toLowerCase();
-            for (XRYKey keyChoice : XRYKey.values()) {
-                if (normalizedKey.equals(keyChoice.name)) {
-                    return keyChoice;
-                }
-            }
-
-            throw new IllegalArgumentException(String.format("Key [%s] was not found."
-                    + " All keys should be tested with contains.", key));
-        }
-    }
-
     @Override
     boolean canProcess(XRYKeyValuePair pair) {
         return XRYKey.contains(pair.getKey());
@@ -168,6 +106,9 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
         }
     }
 
+    /**
+     * 
+     */
     private static class Contact {
 
         private final Contact.Builder builder;
@@ -249,6 +190,66 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
             private Contact build() {
                 return new Contact(this);
             }
+        }
+    }
+    
+    private enum XRYKey {
+        NAME("name", null),
+        TEL("tel", null),
+        MOBILE("mobile", null),
+        HOME("home", null),
+        RELATED_APPLICATION("related application", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PROG_NAME),
+        ADDRESS_HOME("address home", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_LOCATION),
+        EMAIL_HOME("email home", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_EMAIL_HOME),
+        DELETED("deleted", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ISDELETED),
+        //Ignoring or need more information to decide.
+        STORAGE("storage", null),
+        OTHER("other", null),
+        PICTURE("picture", null),
+        INDEX("index", null),
+        ACCOUNT_NAME("account name", null);
+
+        private final String name;
+        private final BlackboardAttribute.ATTRIBUTE_TYPE type;
+
+        XRYKey(String name, BlackboardAttribute.ATTRIBUTE_TYPE type) {
+            this.name = name;
+            this.type = type;
+        }
+
+        public BlackboardAttribute.ATTRIBUTE_TYPE getType() {
+            return type;
+        }
+
+        /**
+         * Indicates if the display name of the XRY key is a recognized type.
+         */
+        public static boolean contains(String key) {
+            try {
+                XRYKey.fromDisplayName(key);
+                return true;
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+        }
+
+        /**
+         * Matches the display name of the xry key to the appropriate enum type.
+         *
+         * It is assumed that XRY key string is recognized. Otherwise, an
+         * IllegalArgumentException is thrown. Test all membership with
+         * contains() before hand.
+         */
+        public static XRYKey fromDisplayName(String key) {
+            String normalizedKey = key.trim().toLowerCase();
+            for (XRYKey keyChoice : XRYKey.values()) {
+                if (normalizedKey.equals(keyChoice.name)) {
+                    return keyChoice;
+                }
+            }
+
+            throw new IllegalArgumentException(String.format("Key [%s] was not found."
+                    + " All keys should be tested with contains.", key));
         }
     }
 }

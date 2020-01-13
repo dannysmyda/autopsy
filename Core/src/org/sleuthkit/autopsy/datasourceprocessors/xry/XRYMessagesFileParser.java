@@ -68,205 +68,13 @@ final class XRYMessagesFileParser implements XRYFileParser {
     private static final int UNREAD = 0;
 
     /**
-     * All of the known XRY keys for message reports and their corresponding
-     * blackboard attribute types, if any.
-     */
-    private enum XryKey {
-        DELETED("deleted", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ISDELETED),
-        DIRECTION("direction", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DIRECTION),
-        MESSAGE("message", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_TEXT),
-        NAME_MATCHED("name (matched)", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_NAME_PERSON),
-        TEXT("text", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_TEXT),
-        TIME("time", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME),
-        SERVICE_CENTER("service center", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER),
-        FROM("from", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_FROM),
-        TO("to", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_TO),
-        //The following keys either need special processing or more time and data to find a type.
-        STORAGE("storage", null),
-        NUMBER("number", null),
-        TYPE("type", null),
-        TEL("tel", null),
-        FOLDER("folder", null),
-        NAME("name", null),
-        INDEX("index", null),
-        STATUS("status", null);
-
-        private final String name;
-        private final BlackboardAttribute.ATTRIBUTE_TYPE type;
-
-        XryKey(String name, BlackboardAttribute.ATTRIBUTE_TYPE type) {
-            this.name = name;
-            this.type = type;
-        }
-
-        public BlackboardAttribute.ATTRIBUTE_TYPE getType() {
-            return type;
-        }
-
-        public String getDisplayName() {
-            return name;
-        }
-
-        /**
-         * Indicates if the display name of the XRY key is a recognized type.
-         *
-         * @param name
-         * @return
-         */
-        public static boolean contains(String name) {
-            try {
-                XryKey.fromDisplayName(name);
-                return true;
-            } catch (IllegalArgumentException ex) {
-                return false;
-            }
-        }
-
-        /**
-         * Matches the display name of the xry key to the appropriate enum type.
-         *
-         * It is assumed that XRY key string is recognized. Otherwise, an
-         * IllegalArgumentException is thrown. Test all membership with
-         * contains() before hand.
-         *
-         * @param name
-         * @return
-         */
-        public static XryKey fromDisplayName(String name) {
-            String normalizedName = name.trim().toLowerCase();
-            for (XryKey keyChoice : XryKey.values()) {
-                if (normalizedName.equals(keyChoice.name)) {
-                    return keyChoice;
-                }
-            }
-
-            throw new IllegalArgumentException(String.format("Key [ %s ] was not found."
-                    + " All keys should be tested with contains.", name));
-        }
-    }
-
-    /**
-     * All of the known XRY namespaces for message reports.
-     */
-    private enum XryNamespace {
-        FROM("from"),
-        PARTICIPANT("participant"),
-        TO("to"),
-        NONE(null);
-
-        private final String name;
-
-        XryNamespace(String name) {
-            this.name = name;
-        }
-
-        /**
-         * Indicates if the display name of the XRY namespace is a recognized
-         * type.
-         *
-         * @param xryNamespace
-         * @return
-         */
-        public static boolean contains(String xryNamespace) {
-            try {
-                XryNamespace.fromDisplayName(xryNamespace);
-                return true;
-            } catch (IllegalArgumentException ex) {
-                return false;
-            }
-        }
-
-        /**
-         * Matches the display name of the xry namespace to the appropriate enum
-         * type.
-         *
-         * It is assumed that XRY namespace string is recognized. Otherwise, an
-         * IllegalArgumentException is thrown. Test all membership with
-         * contains() before hand.
-         *
-         * @param xryNamespace
-         * @return
-         */
-        public static XryNamespace fromDisplayName(String xryNamespace) {
-            String normalizedNamespace = xryNamespace.trim().toLowerCase();
-            for (XryNamespace keyChoice : XryNamespace.values()) {
-                if (normalizedNamespace.equals(keyChoice.name)) {
-                    return keyChoice;
-                }
-            }
-
-            throw new IllegalArgumentException(String.format("Namespace [%s] was not found."
-                    + " All namespaces should be tested with contains.", xryNamespace));
-        }
-    }
-
-    /**
-     * All known XRY meta keys for message reports.
-     */
-    private enum XryMetaKey {
-        REFERENCE_NUMBER("reference number"),
-        SEGMENT_COUNT("segments"),
-        SEGMENT_NUMBER("segment number");
-
-        private final String name;
-
-        XryMetaKey(String name) {
-            this.name = name;
-        }
-
-        public String getDisplayName() {
-            return name;
-        }
-
-        /**
-         * Indicates if the display name of the XRY key is a recognized type.
-         *
-         * @param name
-         * @return
-         */
-        public static boolean contains(String name) {
-            try {
-                XryMetaKey.fromDisplayName(name);
-                return true;
-            } catch (IllegalArgumentException ex) {
-                return false;
-            }
-        }
-
-        /**
-         * Matches the display name of the xry key to the appropriate enum type.
-         *
-         * It is assumed that XRY key string is recognized. Otherwise, an
-         * IllegalArgumentException is thrown. Test all membership with
-         * contains() before hand.
-         *
-         * @param name
-         * @return
-         */
-        public static XryMetaKey fromDisplayName(String name) {
-            String normalizedName = name.trim().toLowerCase();
-            for (XryMetaKey keyChoice : XryMetaKey.values()) {
-                if (normalizedName.equals(keyChoice.name)) {
-                    return keyChoice;
-                }
-            }
-
-            throw new IllegalArgumentException(String.format("Key [ %s ] was not found."
-                    + " All keys should be tested with contains.", name));
-        }
-    }
-
-    /**
-     * Message-SMS report artifacts can span multiple XRY entities and their
-     * attributes can span multiple lines. The "Text" and "Message" keys are the
-     * only known key value pair that can span multiple lines. Messages can be
-     * segmented, meaning that their "Text" and "Message" content can appear in
-     * multiple XRY entities. Our goal for a segmented message is to aggregate
-     * all of the text pieces and create 1 artifact.
-     *
-     * This parse implementation assumes that segments are contiguous and that
-     * they ascend incrementally. There are checks in place to verify this
-     * assumption is correct, otherwise an error will appear in the logs.
+     * Parses each XRY Entity in a Message-SMS report. Message-SMS Entities have
+     * a few special properties. For one, their 'Text' key can span
+     * multiple lines. The underlying message from the device may also be segmented 
+     * across multiple entities. Our goal in this parser is to reconstruct the 
+     * segmented message and submit this as one artifact. Given these requirements
+     * and the breadth of attributes supported for Message-SMS reports, this is
+     * by far the most complicated report parser.
      *
      * @param reader The XRYFileReader that reads XRY entities from the
      * Message-SMS report.
@@ -296,8 +104,12 @@ final class XRYMessagesFileParser implements XRYFileParser {
     }
 
     /**
-     * Extracts all blackboard attributes from the XRY Entity. This function will
-     * unify any segmented text, if need be.
+     * 
+     * @param xryEntity
+     * @param reader
+     * @param referenceValues
+     * @return
+     * @throws IOException 
      */
     private List<XRYKeyValuePair> getXRYKeyValuePairs(String xryEntity,
             XRYFileReader reader, Set<Integer> referenceValues) throws IOException {
@@ -322,16 +134,15 @@ final class XRYMessagesFileParser implements XRYFileParser {
 
             XRYKeyValuePair pair = XRYKeyValuePair.from(xryLine, namespace);
             if(validatePair(pair)) {
-                //Build up multiple lines.
                 StringBuilder builder = new StringBuilder(pair.getValue());
-                concatMultiLineValue(builder, xryLines);
+                buildMultiLineValue(builder, xryLines);
 
-                //Assume text and message are the only fields that can be segmented
+                //'text' and 'message' fields can be segmented
                 //among multiple XRY entities.
                 if (pair.hasKey(XryKey.TEXT.getDisplayName())
                         || pair.hasKey(XryKey.MESSAGE.getDisplayName())) {
                     //Reuse the same builder to add any segmented text.
-                    getSegmentedText(xryEntity, reader, referenceValues, builder);
+                    buildSegmentedText(xryEntity, reader, referenceValues, builder);
                 }
                 
                 pair = new XRYKeyValuePair(pair.getKey(), builder.toString(), pair.getNamespace());
@@ -342,7 +153,12 @@ final class XRYMessagesFileParser implements XRYFileParser {
         return result;
     }
     
-    private void concatMultiLineValue(StringBuilder builder, Queue<String> lines) {
+    /**
+     * 
+     * @param builder
+     * @param lines 
+     */
+    private void buildMultiLineValue(StringBuilder builder, Queue<String> lines) {
         while (!lines.isEmpty()
                 && !XRYKeyValuePair.isPair(lines.peek())
                 && !XryNamespace.contains(lines.peek())) {
@@ -383,7 +199,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
      * @return
      * @throws IOException
      */
-    private void getSegmentedText(String xryEntity, XRYFileReader reader,
+    private void buildSegmentedText(String xryEntity, XRYFileReader reader,
             Set<Integer> referenceNumbersSeen, StringBuilder builder) throws IOException {
         String[] xryLines = xryEntity.split("\n");
         Optional<Integer> referenceNumber = getMetaKeyValue(xryLines, XryMetaKey.REFERENCE_NUMBER);
@@ -459,7 +275,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
                     || pair.hasKey(XryKey.MESSAGE.getDisplayName())) {
                     builder.append(" ").append(pair.getValue());
                     //Build up multi-line text.
-                    concatMultiLineValue(builder, nextXryEntityLines);
+                    buildMultiLineValue(builder, nextXryEntityLines);
                 }
             }
 
@@ -680,5 +496,194 @@ final class XRYMessagesFileParser implements XRYFileParser {
             reversedDateTime.insert(0, " ").insert(0, component);
         }
         return reversedDateTime.toString().trim();
+    }
+    
+    /**
+     * All of the known XRY keys for message reports and their corresponding
+     * blackboard attribute types, if any.
+     */
+    private enum XryKey {
+        DELETED("deleted", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ISDELETED),
+        DIRECTION("direction", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DIRECTION),
+        MESSAGE("message", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_TEXT),
+        NAME_MATCHED("name (matched)", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_NAME_PERSON),
+        TEXT("text", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_TEXT),
+        TIME("time", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME),
+        SERVICE_CENTER("service center", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER),
+        FROM("from", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_FROM),
+        TO("to", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_TO),
+        //The following keys either need special processing or more time and data to find a type.
+        STORAGE("storage", null),
+        NUMBER("number", null),
+        TYPE("type", null),
+        TEL("tel", null),
+        FOLDER("folder", null),
+        NAME("name", null),
+        INDEX("index", null),
+        STATUS("status", null);
+
+        private final String name;
+        private final BlackboardAttribute.ATTRIBUTE_TYPE type;
+
+        XryKey(String name, BlackboardAttribute.ATTRIBUTE_TYPE type) {
+            this.name = name;
+            this.type = type;
+        }
+
+        public BlackboardAttribute.ATTRIBUTE_TYPE getType() {
+            return type;
+        }
+
+        public String getDisplayName() {
+            return name;
+        }
+
+        /**
+         * Indicates if the display name of the XRY key is a recognized type.
+         *
+         * @param name
+         * @return
+         */
+        public static boolean contains(String name) {
+            try {
+                XryKey.fromDisplayName(name);
+                return true;
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+        }
+
+        /**
+         * Matches the display name of the xry key to the appropriate enum type.
+         *
+         * It is assumed that XRY key string is recognized. Otherwise, an
+         * IllegalArgumentException is thrown. Test all membership with
+         * contains() before hand.
+         *
+         * @param name
+         * @return
+         */
+        public static XryKey fromDisplayName(String name) {
+            String normalizedName = name.trim().toLowerCase();
+            for (XryKey keyChoice : XryKey.values()) {
+                if (normalizedName.equals(keyChoice.name)) {
+                    return keyChoice;
+                }
+            }
+
+            throw new IllegalArgumentException(String.format("Key [ %s ] was not found."
+                    + " All keys should be tested with contains.", name));
+        }
+    }
+
+    /**
+     * All of the known XRY namespaces for message reports.
+     */
+    private enum XryNamespace {
+        FROM("from"),
+        PARTICIPANT("participant"),
+        TO("to"),
+        NONE(null);
+
+        private final String name;
+
+        XryNamespace(String name) {
+            this.name = name;
+        }
+
+        /**
+         * Indicates if the display name of the XRY namespace is a recognized
+         * type.
+         *
+         * @param xryNamespace
+         * @return
+         */
+        public static boolean contains(String xryNamespace) {
+            try {
+                XryNamespace.fromDisplayName(xryNamespace);
+                return true;
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+        }
+
+        /**
+         * Matches the display name of the xry namespace to the appropriate enum
+         * type.
+         *
+         * It is assumed that XRY namespace string is recognized. Otherwise, an
+         * IllegalArgumentException is thrown. Test all membership with
+         * contains() before hand.
+         *
+         * @param xryNamespace
+         * @return
+         */
+        public static XryNamespace fromDisplayName(String xryNamespace) {
+            String normalizedNamespace = xryNamespace.trim().toLowerCase();
+            for (XryNamespace keyChoice : XryNamespace.values()) {
+                if (normalizedNamespace.equals(keyChoice.name)) {
+                    return keyChoice;
+                }
+            }
+
+            throw new IllegalArgumentException(String.format("Namespace [%s] was not found."
+                    + " All namespaces should be tested with contains.", xryNamespace));
+        }
+    }
+
+    /**
+     * All known XRY meta keys for message reports.
+     */
+    private enum XryMetaKey {
+        REFERENCE_NUMBER("reference number"),
+        SEGMENT_COUNT("segments"),
+        SEGMENT_NUMBER("segment number");
+
+        private final String name;
+
+        XryMetaKey(String name) {
+            this.name = name;
+        }
+
+        public String getDisplayName() {
+            return name;
+        }
+
+        /**
+         * Indicates if the display name of the XRY key is a recognized type.
+         *
+         * @param name
+         * @return
+         */
+        public static boolean contains(String name) {
+            try {
+                XryMetaKey.fromDisplayName(name);
+                return true;
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+        }
+
+        /**
+         * Matches the display name of the xry key to the appropriate enum type.
+         *
+         * It is assumed that XRY key string is recognized. Otherwise, an
+         * IllegalArgumentException is thrown. Test all membership with
+         * contains() before hand.
+         *
+         * @param name
+         * @return
+         */
+        public static XryMetaKey fromDisplayName(String name) {
+            String normalizedName = name.trim().toLowerCase();
+            for (XryMetaKey keyChoice : XryMetaKey.values()) {
+                if (normalizedName.equals(keyChoice.name)) {
+                    return keyChoice;
+                }
+            }
+
+            throw new IllegalArgumentException(String.format("Key [ %s ] was not found."
+                    + " All keys should be tested with contains.", name));
+        }
     }
 }
