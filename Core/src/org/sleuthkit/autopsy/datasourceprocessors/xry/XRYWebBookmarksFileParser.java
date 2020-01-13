@@ -32,7 +32,7 @@ import org.sleuthkit.datamodel.blackboardutils.WebBrowserArtifactsHelper;
  * Parses XRY Web-Bookmark files and creates artifacts.
  */
 final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
-    
+
     private enum XRYKey {
         //This enum doubles down as a map for attribute types and also a
         //Set for testing key membership.
@@ -96,13 +96,13 @@ final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
     }
 
     /**
-     * 
+     *
      * @param builder
-     * @param pair 
+     * @param pair
      */
     private void addToBuilder(WebBookmark.Builder builder, XRYKeyValuePair pair) {
         XRYKey xryKey = XRYKey.fromDisplayName(pair.getKey());
-        switch(xryKey) {
+        switch (xryKey) {
             case APPLICATION:
                 builder.setProgName(pair.getValue());
                 break;
@@ -116,20 +116,20 @@ final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
                 ));
         }
     }
-    
+
     @Override
     void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException, BlackboardException {
         WebBookmark.Builder builder = new WebBookmark.Builder();
-        
-        for(XRYKeyValuePair pair : keyValuePairs) {
+
+        for (XRYKeyValuePair pair : keyValuePairs) {
             addToBuilder(builder, pair);
         }
-        
-        if(!builder.isEmpty()) {
+
+        if (!builder.isEmpty()) {
             WebBookmark webBookmark = builder.build();
             WebBrowserArtifactsHelper helper = new WebBrowserArtifactsHelper(
                     currentCase, "XRY DSP", parent);
-            
+
             helper.addWebBookmark(
                     webBookmark.getUrl(),
                     webBookmark.getTitle(),
@@ -139,44 +139,45 @@ final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
             );
         }
     }
-    
+
     private static class WebBookmark {
-        
+
         private final WebBookmark.Builder builder;
-        
+
         private WebBookmark(WebBookmark.Builder webBookmarkBuilder) {
             builder = webBookmarkBuilder;
         }
-        
+
         private String getUrl() {
             return this.builder.url;
         }
-        
+
         private String getTitle() {
             return this.builder.title;
         }
-        
+
         private long getCreationTime() {
             return this.builder.creationTime;
         }
-        
+
         private String getProgName() {
             return this.builder.progName;
         }
-        
+
         private Collection<BlackboardAttribute> getOtherAttributes() {
             return this.builder.otherAttributes;
         }
-        
+
         //Manages and aggregates all of the parameters that will be used
         //to call CommunicationArtifactsHelper.addCalllog.
         private static class Builder {
+
             private String url;
             private String title;
             private long creationTime;
             private String progName;
             private final Collection<BlackboardAttribute> otherAttributes;
-            
+
             private Builder() {
                 url = "";
                 title = "";
@@ -184,25 +185,25 @@ final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
                 progName = "";
                 otherAttributes = new ArrayList<>();
             }
-            
+
             private void setUrl(String url) {
                 this.url = url;
             }
-            
+
             private void setProgName(String progName) {
                 this.progName = progName;
             }
-            
+
             private void addOtherAttributes(BlackboardAttribute attr) {
                 otherAttributes.add(attr);
             }
-            
+
             private boolean isEmpty() {
-                return url.isEmpty() && title.isEmpty() 
-                        && creationTime == 0 && progName.isEmpty() 
+                return url.isEmpty() && title.isEmpty()
+                        && creationTime == 0 && progName.isEmpty()
                         && otherAttributes.isEmpty();
             }
-            
+
             private WebBookmark build() {
                 return new WebBookmark(this);
             }

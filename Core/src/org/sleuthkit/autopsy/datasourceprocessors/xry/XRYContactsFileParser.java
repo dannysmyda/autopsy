@@ -35,7 +35,7 @@ import org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper;
  * Parses XRY Contacts-Contacts files and creates artifacts.
  */
 final class XRYContactsFileParser extends AbstractSingleEntityParser {
-    
+
     private static final Logger logger = Logger.getLogger(XRYContactsFileParser.class.getName());
 
     private enum XRYKey {
@@ -49,7 +49,6 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
         ADDRESS_HOME("address home", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_LOCATION),
         EMAIL_HOME("email home", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_EMAIL_HOME),
         DELETED("deleted", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ISDELETED),
-        
         //Ignoring or need more information to decide.
         STORAGE("storage", null),
         OTHER("other", null),
@@ -100,7 +99,7 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
                     + " All keys should be tested with contains.", key));
         }
     }
-    
+
     @Override
     boolean canProcess(XRYKeyValuePair pair) {
         return XRYKey.contains(pair.getKey());
@@ -113,13 +112,13 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
     }
 
     /**
-     * 
+     *
      * @param builder
-     * @param pair 
+     * @param pair
      */
     private void addToBuilder(Contact.Builder builder, XRYKeyValuePair pair) {
         XRYKey xryKey = XRYKey.fromDisplayName(pair.getKey());
-        switch(xryKey) {
+        switch (xryKey) {
             case NAME:
                 builder.setName(pair.getValue());
                 break;
@@ -133,84 +132,85 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
                 builder.setHomePhoneNumber(pair.getValue());
                 break;
             default:
-                if(xryKey.getType() != null) {
+                if (xryKey.getType() != null) {
                     builder.addOtherAttributes(new BlackboardAttribute(
                             xryKey.getType(), PARSER_NAME, pair.getValue()));
                 } else {
                     logger.log(Level.INFO, String.format("[XRY DSP] Key value pair "
-                    + "(in brackets) [ %s ] was recognized but we need "
-                    + "more data or time to finish implementation. Discarding... ", 
-                    pair));
+                            + "(in brackets) [ %s ] was recognized but we need "
+                            + "more data or time to finish implementation. Discarding... ",
+                            pair));
                 }
         }
     }
-    
+
     @Override
     void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException, Blackboard.BlackboardException {
         Contact.Builder builder = new Contact.Builder();
-        
-        for(XRYKeyValuePair pair : keyValuePairs) {
+
+        for (XRYKeyValuePair pair : keyValuePairs) {
             addToBuilder(builder, pair);
         }
-        
-        if(!builder.isEmpty()) {
+
+        if (!builder.isEmpty()) {
             Contact contact = builder.build();
             CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
                     currentCase, "XRY DSP", parent, Account.Type.DEVICE);
-            
+
             helper.addContact(
-                    contact.getName(), 
-                    contact.getPhoneNumber(), 
-                    contact.getHomePhoneNumber(), 
-                    contact.getMobilePhoneNumber(), 
-                    contact.getEmailAddress(), 
+                    contact.getName(),
+                    contact.getPhoneNumber(),
+                    contact.getHomePhoneNumber(),
+                    contact.getMobilePhoneNumber(),
+                    contact.getEmailAddress(),
                     contact.getOtherAttributes()
             );
         }
     }
-    
+
     private static class Contact {
-        
+
         private final Contact.Builder builder;
-        
+
         private Contact(Contact.Builder contactBuilder) {
             builder = contactBuilder;
         }
-        
+
         private String getName() {
             return this.builder.name;
         }
-        
+
         private String getPhoneNumber() {
             return this.builder.phoneNumber;
         }
-        
+
         private String getHomePhoneNumber() {
             return this.builder.homePhoneNumber;
         }
-        
+
         private String getMobilePhoneNumber() {
             return this.builder.mobilePhoneNumber;
         }
-        
+
         private String getEmailAddress() {
             return this.builder.emailAddress;
         }
-        
+
         private Collection<BlackboardAttribute> getOtherAttributes() {
             return this.builder.otherAttributes;
         }
-        
+
         //Manages and aggregates all of the parameters that will be used
         //to call CommunicationArtifactsHelper.addCalllog.
         private static class Builder {
+
             private String name;
             private String phoneNumber;
             private String homePhoneNumber;
             private String mobilePhoneNumber;
             private String emailAddress;
             private final Collection<BlackboardAttribute> otherAttributes;
-            
+
             public Builder() {
                 name = "";
                 phoneNumber = "";
@@ -219,33 +219,33 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
                 emailAddress = "";
                 otherAttributes = new ArrayList<>();
             }
-            
+
             private void setName(String name) {
                 this.name = name;
             }
-            
+
             private void setPhoneNumber(String phoneNumber) {
                 this.phoneNumber = phoneNumber;
             }
-            
+
             private void setHomePhoneNumber(String homePhone) {
                 this.homePhoneNumber = homePhone;
             }
-            
+
             private void setMobilePhoneNumber(String mobilePhone) {
                 this.mobilePhoneNumber = mobilePhone;
             }
-            
+
             private void addOtherAttributes(BlackboardAttribute attr) {
                 otherAttributes.add(attr);
             }
-            
+
             private boolean isEmpty() {
-                return name.isEmpty() && phoneNumber.isEmpty() 
-                        && otherAttributes.isEmpty() && homePhoneNumber.isEmpty() 
+                return name.isEmpty() && phoneNumber.isEmpty()
+                        && otherAttributes.isEmpty() && homePhoneNumber.isEmpty()
                         && mobilePhoneNumber.isEmpty() && emailAddress.isEmpty();
             }
-            
+
             private Contact build() {
                 return new Contact(this);
             }

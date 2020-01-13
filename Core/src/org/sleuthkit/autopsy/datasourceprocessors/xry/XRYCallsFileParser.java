@@ -184,16 +184,16 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
     @Override
     void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException, BlackboardException {
         CallLog.Builder builder = new CallLog.Builder();
-        
-        for(XRYKeyValuePair pair : keyValuePairs) {
+
+        for (XRYKeyValuePair pair : keyValuePairs) {
             addToBuilder(pair, builder);
         }
-        
-        if(!builder.isEmpty()) {
+
+        if (!builder.isEmpty()) {
             CallLog callLog = builder.build();
             CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
                     currentCase, "XRY DSP", parent, Account.Type.DEVICE);
-            
+
             helper.addCalllog(
                     callLog.getDirection(),
                     callLog.getCallerID(),
@@ -205,11 +205,11 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
             );
         }
     }
-    
+
     /**
-     * 
+     *
      * @param pair
-     * @param builder 
+     * @param builder
      */
     private void addToBuilder(XRYKeyValuePair pair, CallLog.Builder builder) {
         XryKey xryKey = XryKey.fromDisplayName(pair.getKey());
@@ -257,7 +257,7 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
                 break;
             case DIRECTION:
                 String direction = pair.getValue().toLowerCase();
-                if(direction.equals("incoming")) {
+                if (direction.equals("incoming")) {
                     builder.setDirection(CommunicationDirection.INCOMING);
                 } else {
                     builder.setDirection(CommunicationDirection.OUTGOING);
@@ -362,46 +362,47 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
         }
         return reversedDateTime.toString().trim();
     }
-    
+
     private static class CallLog {
-        
+
         private final CallLog.Builder builder;
-        
+
         private CallLog(CallLog.Builder callLogBuilder) {
             builder = callLogBuilder;
         }
-        
+
         private String getCallerID() {
             return this.builder.callerId;
         }
-        
+
         private Collection<String> getCalleeList() {
             return this.builder.calleeList;
         }
-        
+
         private CommunicationDirection getDirection() {
             return this.builder.direction;
         }
-        
+
         private long getStartTime() {
             return this.builder.startTime;
         }
-        
+
         private long getEndTime() {
             return this.builder.endTime;
         }
-        
+
         private CallMediaType getCallType() {
             return this.builder.callType;
         }
-        
+
         private Collection<BlackboardAttribute> getOtherAttributes() {
             return this.builder.otherAttributes;
         }
-        
+
         //Manages and aggregates all of the parameters that will be used
         //to call CommunicationArtifactsHelper.addCalllog.
         private static class Builder {
+
             private String callerId;
             private final Collection<String> calleeList;
             private CommunicationDirection direction;
@@ -409,7 +410,7 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
             private long endTime;
             private CallMediaType callType;
             private final Collection<BlackboardAttribute> otherAttributes;
-            
+
             public Builder() {
                 calleeList = new ArrayList<>();
                 otherAttributes = new ArrayList<>();
@@ -419,33 +420,33 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
                 direction = CommunicationDirection.UNKNOWN;
                 callerId = "";
             }
-            
+
             private void setCallerID(String callerID) {
                 this.callerId = callerID;
             }
-            
+
             private void addCallee(String callee) {
                 this.calleeList.add(callee);
             }
-            
+
             private void setStartTime(long startTime) {
                 this.startTime = startTime;
             }
-            
+
             private void setDirection(CommunicationDirection direction) {
                 this.direction = direction;
             }
-            
+
             private void addOtherAttributes(BlackboardAttribute attr) {
                 otherAttributes.add(attr);
             }
-            
+
             private boolean isEmpty() {
                 return callerId.isEmpty() && calleeList.isEmpty() && otherAttributes.isEmpty()
                         && startTime == 0L && endTime == 0L && callType.equals(CallMediaType.UNKNOWN)
                         && direction.equals(CommunicationDirection.UNKNOWN);
             }
-            
+
             private CallLog build() {
                 return new CallLog(this);
             }
