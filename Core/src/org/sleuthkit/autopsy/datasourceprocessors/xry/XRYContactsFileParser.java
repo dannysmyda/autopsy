@@ -140,9 +140,7 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
         private Collection<BlackboardAttribute> getOtherAttributes() {
             return this.builder.otherAttributes;
         }
-
-        //Manages and aggregates all of the parameters that will be used
-        //to call CommunicationArtifactsHelper.addCalllog.
+        
         private static class Builder {
 
             private String name;

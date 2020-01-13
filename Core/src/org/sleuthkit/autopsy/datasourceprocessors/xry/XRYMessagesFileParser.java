@@ -32,6 +32,7 @@ import java.time.temporal.TemporalQueries;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -40,11 +41,15 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.logging.Level;
 import org.sleuthkit.autopsy.coreutils.Logger;
-import org.sleuthkit.datamodel.BlackboardArtifact;
+import org.sleuthkit.datamodel.Account;
+import org.sleuthkit.datamodel.Blackboard.BlackboardException;
 import org.sleuthkit.datamodel.BlackboardAttribute;
 import org.sleuthkit.datamodel.Content;
 import org.sleuthkit.datamodel.SleuthkitCase;
 import org.sleuthkit.datamodel.TskCoreException;
+import org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper;
+import org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper.CommunicationDirection;
+import org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper.MessageReadStatus;
 
 /**
  * Parses Messages-SMS files and creates artifacts.
@@ -64,17 +69,14 @@ final class XRYMessagesFileParser implements XRYFileParser {
     private static final String DEVICE_LOCALE = "(device)";
     private static final String NETWORK_LOCALE = "(network)";
 
-    private static final int READ = 1;
-    private static final int UNREAD = 0;
-
     /**
      * Parses each XRY Entity in a Message-SMS report. Message-SMS Entities have
-     * a few special properties. For one, their 'Text' key can span
-     * multiple lines. The underlying message from the device may also be segmented 
-     * across multiple entities. Our goal in this parser is to reconstruct the 
-     * segmented message and submit this as one artifact. Given these requirements
-     * and the breadth of attributes supported for Message-SMS reports, this is
-     * by far the most complicated report parser.
+     * a few special properties. For one, their 'Text' key can span multiple
+     * lines. The underlying message from the device may also be segmented
+     * across multiple entities. Our goal in this parser is to reconstruct the
+     * segmented message and submit this as one artifact. Given these
+     * requirements and the breadth of attributes supported for Message-SMS
+     * reports, this is by far the most complicated report parser.
      *
      * @param reader The XRYFileReader that reads XRY entities from the
      * Message-SMS report.
@@ -84,56 +86,75 @@ final class XRYMessagesFileParser implements XRYFileParser {
      * encountered.
      */
     @Override
-    public void parse(XRYFileReader reader, Content parent, SleuthkitCase currentCase) throws IOException, TskCoreException {
+    public void parse(XRYFileReader reader, Content parent, SleuthkitCase currentCase) throws IOException, TskCoreException, BlackboardException {
         Path reportPath = reader.getReportPath();
-        logger.log(Level.INFO, String.format("[XRY DSP] Processing report at"
-                + " [ %s ]", reportPath.toString()));
+        logger.log(Level.INFO, String.format("[%s] Processing report at"
+                + " [ %s ]", PARSER_NAME, reportPath.toString()));
 
         //Keep track of the reference numbers that have been parsed.
         Set<Integer> referenceNumbersSeen = new HashSet<>();
 
         while (reader.hasNextEntity()) {
             String xryEntity = reader.nextEntity();
-            List<XRYKeyValuePair> pairs = getXRYKeyValuePairs(xryEntity, reader, referenceNumbersSeen);       
-            //Map them using a MessageBuilder.
-            if (!attributes.isEmpty()) {
-                BlackboardArtifact artifact = parent.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_MESSAGE);
-                artifact.addAttributes(attributes);
+            List<XRYKeyValuePair> pairs = getXRYKeyValuePairs(xryEntity, reader, referenceNumbersSeen);
+
+            Message.Builder builder = new Message.Builder(PARSER_NAME);
+            for (XRYKeyValuePair pair : pairs) {
+                addToBuilder(builder, pair);
+            }
+
+            if (!builder.isEmpty()) {
+                Message message = builder.build();
+                CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
+                        currentCase, PARSER_NAME, parent, Account.Type.DEVICE);
+
+                helper.addMessage(
+                        message.getMessageType(),
+                        message.getDirection(),
+                        message.getSenderId(),
+                        message.getRecipientIdsList(),
+                        message.getDateTime(),
+                        message.getReadStatus(),
+                        message.getSubject(),
+                        message.getText(),
+                        message.getThreadId(),
+                        message.getOtherAttributes()
+                );
             }
         }
     }
 
     /**
-     * 
+     *
      * @param xryEntity
      * @param reader
      * @param referenceValues
      * @return
-     * @throws IOException 
+     * @throws IOException
      */
     private List<XRYKeyValuePair> getXRYKeyValuePairs(String xryEntity,
             XRYFileReader reader, Set<Integer> referenceValues) throws IOException {
+
         Queue<String> xryLines = new ArrayDeque<>(Arrays.asList(xryEntity.split("\n")));
-        
         //First line of the entity is the title, each XRY entity is non-empty.
-        logger.log(Level.INFO, String.format("[XRY DSP] Processing [ %s ]", xryLines.poll()));
+        logger.log(Level.INFO, String.format("[%s] Processing [ %s ]", PARSER_NAME, xryLines.poll()));
 
         List<XRYKeyValuePair> result = new ArrayList<>();
         String namespace = "";
-        while(!xryLines.isEmpty()) {
+        while (!xryLines.isEmpty()) {
             String xryLine = xryLines.poll();
             if (XryNamespace.contains(xryLine)) {
                 namespace = xryLine.trim();
                 continue;
             } else if (!XRYKeyValuePair.isPair(xryLine)) {
-                logger.log(Level.SEVERE, String.format("[XRY DSP] Expected a key value "
+                logger.log(Level.SEVERE, String.format("[%s] Expected a key value "
                         + "pair on this line (in brackets) [ %s ], but one was not detected."
-                        + " Discarding...", xryLine));
+                        + " Discarding...", PARSER_NAME, xryLine));
                 continue;
             }
 
             XRYKeyValuePair pair = XRYKeyValuePair.from(xryLine, namespace);
-            if(validatePair(pair)) {
+            if (validatePair(pair)) {
                 StringBuilder builder = new StringBuilder(pair.getValue());
                 buildMultiLineValue(builder, xryLines);
 
@@ -144,7 +165,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
                     //Reuse the same builder to add any segmented text.
                     buildSegmentedText(xryEntity, reader, referenceValues, builder);
                 }
-                
+
                 pair = new XRYKeyValuePair(pair.getKey(), builder.toString(), pair.getNamespace());
                 result.add(pair);
             }
@@ -152,11 +173,11 @@ final class XRYMessagesFileParser implements XRYFileParser {
 
         return result;
     }
-    
+
     /**
-     * 
+     *
      * @param builder
-     * @param lines 
+     * @param lines
      */
     private void buildMultiLineValue(StringBuilder builder, Queue<String> lines) {
         while (!lines.isEmpty()
@@ -165,36 +186,37 @@ final class XRYMessagesFileParser implements XRYFileParser {
             builder.append(" ").append(lines.poll().trim());
         }
     }
-    
+
     /**
-     * 
+     *
      * @param pair
-     * @return 
+     * @return
      */
     private boolean validatePair(XRYKeyValuePair pair) {
         if (XryMetaKey.contains(pair.getKey())) {
             //Meta Keys are handled differently.
             return false;
         } else if (!XryKey.contains(pair.getKey())) {
-            logger.log(Level.WARNING, String.format("[XRY DSP] The following key, "
+            logger.log(Level.WARNING, String.format("[%s] The following key, "
                     + "value pair (in brackets) [ %s ], "
-                    + "was not recognized. Discarding...", pair));
+                    + "was not recognized. Discarding...", PARSER_NAME, pair));
             return false;
         } else if (pair.getValue().isEmpty()) {
-            logger.log(Level.WARNING, String.format("[XRY DSP] The following key "
+            logger.log(Level.WARNING, String.format("[%s] The following key "
                     + "(in brackets) [ %s ] was recognized, but the value "
-                    + "was empty. Discarding...", pair.getKey()));
+                    + "was empty. Discarding...", PARSER_NAME, pair.getKey()));
             return false;
         }
         return true;
     }
 
     /**
-     * Builds up segmented message entities so that the text is unified for a 
+     * Builds up segmented message entities so that the text is unified for a
      * single artifact.
      *
      * @param reader File reader that is producing XRY entities.
-     * @param referenceNumbersSeen All known references numbers up until this point.
+     * @param referenceNumbersSeen All known references numbers up until this
+     * point.
      * @param xryEntity The source XRY entity.
      * @return
      * @throws IOException
@@ -208,24 +230,26 @@ final class XRYMessagesFileParser implements XRYFileParser {
             return;
         }
 
-        logger.log(Level.INFO, String.format("[XRY DSP] Message entity "
-                + "appears to be segmented with reference number [ %d ]", referenceNumber.get()));
+        logger.log(Level.INFO, String.format("[%s] Message entity "
+                + "appears to be segmented with reference number [ %d ]", 
+                PARSER_NAME, referenceNumber.get()));
 
         if (referenceNumbersSeen.contains(referenceNumber.get())) {
-            logger.log(Level.SEVERE, String.format("[XRY DSP] This reference [ %d ] has already "
+            logger.log(Level.SEVERE, String.format("[%s] This reference [ %d ] has already "
                     + "been seen. This means that the segments are not "
                     + "contiguous. Any segments contiguous with this "
                     + "one will be aggregated and another "
-                    + "(otherwise duplicate) artifact will be created.", referenceNumber.get()));
+                    + "(otherwise duplicate) artifact will be created.",
+                    PARSER_NAME, referenceNumber.get()));
         }
 
         referenceNumbersSeen.add(referenceNumber.get());
 
         Optional<Integer> segmentNumber = getMetaKeyValue(xryLines, XryMetaKey.SEGMENT_NUMBER);
         if (!segmentNumber.isPresent()) {
-            logger.log(Level.SEVERE, String.format("No segment "
+            logger.log(Level.SEVERE, String.format("[%s] No segment "
                     + "number was found on the message entity"
-                    + "with reference number [%d]", referenceNumber.get()));
+                    + "with reference number [%d]", PARSER_NAME, referenceNumber.get()));
             return;
         }
 
@@ -247,32 +271,35 @@ final class XRYMessagesFileParser implements XRYFileParser {
             //Consume the entity, it is a part of the message thread.
             reader.nextEntity();
             Queue<String> nextXryEntityLines = new ArrayDeque<>(Arrays.asList(nextEntityLines));
-            logger.log(Level.INFO, String.format("[XRY DSP] Processing [ %s ] "
-                    + "segment with reference number [ %d ]", nextXryEntityLines.poll(), referenceNumber.get()));
+            logger.log(Level.INFO, String.format("[%s] Processing [ %s ] "
+                    + "segment with reference number [ %d ]",PARSER_NAME, 
+                    nextXryEntityLines.poll(), referenceNumber.get()));
 
             if (!nextSegmentNumber.isPresent()) {
-                logger.log(Level.SEVERE, String.format("[XRY DSP] Segment with reference"
+                logger.log(Level.SEVERE, String.format("[%s] Segment with reference"
                         + " number [ %d ] did not have a segment number associated with it."
-                        + " It cannot be determined if the reconstructed text will be in order.", referenceNumber.get()));
+                        + " It cannot be determined if the reconstructed text will be in order.", 
+                        PARSER_NAME, referenceNumber.get()));
             } else if (nextSegmentNumber.get() != currentSegmentNumber + 1) {
-                logger.log(Level.SEVERE, String.format("[XRY DSP] Contiguous "
+                logger.log(Level.SEVERE, String.format("[%s] Contiguous "
                         + "segments are not ascending incrementally. Encountered "
                         + "segment [ %d ] after segment [ %d ]. This means the reconstructed "
-                        + "text will be out of order.", nextSegmentNumber.get(), currentSegmentNumber));
+                        + "text will be out of order.", PARSER_NAME, 
+                        nextSegmentNumber.get(), currentSegmentNumber));
             }
 
-            while(!nextXryEntityLines.isEmpty()) {
+            while (!nextXryEntityLines.isEmpty()) {
                 String nextXryEntityLine = nextXryEntityLines.poll();
                 //We are searching for TEXT and MESSAGE pairs, continue if 
                 //this line is not a pair.
-                if(!XRYKeyValuePair.isPair(nextXryEntityLine)) {
+                if (!XRYKeyValuePair.isPair(nextXryEntityLine)) {
                     continue;
                 }
-                
+
                 XRYKeyValuePair pair = XRYKeyValuePair.from(nextXryEntityLine);
 
                 if (pair.hasKey(XryKey.TEXT.getDisplayName())
-                    || pair.hasKey(XryKey.MESSAGE.getDisplayName())) {
+                        || pair.hasKey(XryKey.MESSAGE.getDisplayName())) {
                     builder.append(" ").append(pair.getValue());
                     //Build up multi-line text.
                     buildMultiLineValue(builder, nextXryEntityLines);
@@ -287,7 +314,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
 
     /**
      * Extracts the value of the XRY meta key, if any.
-     * 
+     *
      * @param xryLines XRY entity to extract from.
      * @param metaKey The key type to extract.
      * @return
@@ -303,24 +330,16 @@ final class XRYMessagesFileParser implements XRYFileParser {
                 try {
                     return Optional.of(Integer.parseInt(pair.getValue()));
                 } catch (NumberFormatException ex) {
-                    logger.log(Level.SEVERE, String.format("[XRY DSP] Value [ %s ] for "
-                            + "meta key [ %s ] was not an integer.", pair.getValue(), metaKey), ex);
+                    logger.log(Level.SEVERE, String.format("[%s] Value [ %s ] for "
+                            + "meta key [ %s ] was not an integer.", PARSER_NAME, 
+                            pair.getValue(), metaKey), ex);
                 }
             }
         }
         return Optional.empty();
     }
 
-    /**
-     * Creates an attribute from the extracted key value pair.
-     *
-     * @param nameSpace The namespace of this key value pair. It will have been
-     * verified beforehand, otherwise it will be NONE.
-     * @param key The recognized XRY key.
-     * @param value The value associated with that key.
-     * @return Corresponding blackboard attribute, if any.
-     */
-    private Optional<BlackboardAttribute> getBlackboardAttribute(XRYKeyValuePair pair) {
+    private void addToBuilder(Message.Builder builder, XRYKeyValuePair pair) {
         XryNamespace namespace = XryNamespace.NONE;
         if (XryNamespace.contains(pair.getNamespace())) {
             namespace = XryNamespace.fromDisplayName(pair.getNamespace());
@@ -333,83 +352,95 @@ final class XRYMessagesFileParser implements XRYFileParser {
             case NUMBER:
                 switch (namespace) {
                     case FROM:
-                        return Optional.of(new BlackboardAttribute(
-                                BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_FROM,
-                                PARSER_NAME, pair.getValue()));
+                        builder.setSenderId(pair.getValue());
+                        break;
                     case TO:
                     case PARTICIPANT:
-                        return Optional.of(new BlackboardAttribute(
-                                BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_TO,
-                                PARSER_NAME, pair.getValue()));
+                        builder.addRecipientId(pair.getValue());
+                        break;
                     default:
-                        return Optional.of(new BlackboardAttribute(
+                        builder.addOtherAttributes(new BlackboardAttribute(
                                 BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER,
                                 PARSER_NAME, pair.getValue()));
                 }
+                break;
+            //Although confusing, as these are also 'name spaces', it appears
+            //later versions of XRY realized having standardized lines was easier
+            //to read.
+            case FROM:
+                builder.setSenderId(pair.getValue());
+                break;
+            case TO:
+                builder.addRecipientId(pair.getValue());
+                break;
             case TIME:
                 try {
                     //Tranform value to seconds since epoch
                     long dateTimeSinceInEpoch = calculateSecondsSinceEpoch(pair.getValue());
-                    return Optional.of(new BlackboardAttribute(
-                            BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME_START,
-                            PARSER_NAME, dateTimeSinceInEpoch));
+                    builder.setDateTime(dateTimeSinceInEpoch);
                 } catch (DateTimeParseException ex) {
-                    logger.log(Level.WARNING, String.format("[XRY DSP] Assumption"
+                    logger.log(Level.WARNING, String.format("[%s] Assumption"
                             + " about the date time formatting of messages is "
-                            + "not right. Here is the pair [ %s ]", pair), ex);
-                    return Optional.empty();
+                            + "not right. Here is the pair [ %s ]", PARSER_NAME, pair), ex);
                 }
+                break;
             case TYPE:
                 switch (normalizedValue) {
                     case "incoming":
+                        builder.setDirection(CommunicationDirection.INCOMING);
+                        break;
                     case "outgoing":
-                        return Optional.of(new BlackboardAttribute(
-                                BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DIRECTION,
-                                PARSER_NAME, pair.getValue()));
+                        builder.setDirection(CommunicationDirection.OUTGOING);
+                        break;
                     case "deliver":
                     case "submit":
                     case "status report":
                         //Ignore for now.
-                        return Optional.empty();
+                        break;
                     default:
-                        logger.log(Level.WARNING, String.format("[XRY DSP] Unrecognized "
-                                + " value for key pair [ %s ].", pair));
-                        return Optional.empty();
+                        logger.log(Level.WARNING, String.format("[%s] Unrecognized "
+                                + " value for key pair [ %s ].", PARSER_NAME, pair));
                 }
+                break;
             case STATUS:
                 switch (normalizedValue) {
                     case "read":
-                        return Optional.of(new BlackboardAttribute(
-                                BlackboardAttribute.ATTRIBUTE_TYPE.TSK_READ_STATUS,
-                                PARSER_NAME, READ));
+                        builder.setReadStatus(MessageReadStatus.READ);
+                        break;
                     case "unread":
-                        return Optional.of(new BlackboardAttribute(
-                                BlackboardAttribute.ATTRIBUTE_TYPE.TSK_READ_STATUS,
-                                PARSER_NAME, UNREAD));
-                    case "sending failed":
+                        builder.setReadStatus(MessageReadStatus.UNREAD);
+                        break;
                     case "deleted":
+                        builder.addOtherAttributes(new BlackboardAttribute(
+                                BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ISDELETED, 
+                                PARSER_NAME, pair.getValue()));
+                        break;
+                    case "sending failed":
                     case "unsent":
                     case "sent":
-                        //Ignore for now.
-                        return Optional.empty();
+                        //Ignoring for now.
+                        break;
                     default:
-                        logger.log(Level.WARNING, String.format("[XRY DSP] Unrecognized "
-                                + " value for key pair [ %s ].", pair));
-                        return Optional.empty();
+                        logger.log(Level.WARNING, String.format("[%s] Unrecognized "
+                                + " value for key pair [ %s ].", PARSER_NAME, pair));
                 }
+                break;
+            case TEXT:
+            case MESSAGE:
+                builder.setText(pair.getValue());
+                break;
             default:
                 //Otherwise, the XryKey enum contains the correct BlackboardAttribute
                 //type.
                 if (key.getType() != null) {
-                    return Optional.of(new BlackboardAttribute(key.getType(),
+                    builder.addOtherAttributes(new BlackboardAttribute(key.getType(),
                             PARSER_NAME, pair.getValue()));
-                }
-
-                logger.log(Level.INFO, String.format("[XRY DSP] Key value pair "
+                } else {
+                    logger.log(Level.INFO, String.format("[%s] Key value pair "
                         + "(in brackets) [ %s ] was recognized but "
-                        + "more data or time is needed to finish implementation. Discarding... ", pair));
-
-                return Optional.empty();
+                        + "more data or time is needed to finish implementation. Discarding... ", 
+                            PARSER_NAME, pair));
+                }
         }
     }
 
@@ -497,7 +528,126 @@ final class XRYMessagesFileParser implements XRYFileParser {
         }
         return reversedDateTime.toString().trim();
     }
-    
+
+    /**
+     *
+     */
+    private static class Message {
+
+        private final Message.Builder builder;
+
+        private Message(Message.Builder messageBuilder) {
+            builder = messageBuilder;
+        }
+
+        private String getMessageType() {
+            return this.builder.messageType;
+        }
+
+        private CommunicationDirection getDirection() {
+            return this.builder.direction;
+        }
+
+        private String getSenderId() {
+            return this.builder.senderId;
+        }
+
+        private List<String> getRecipientIdsList() {
+            return this.builder.recipientIdsList;
+        }
+
+        private long getDateTime() {
+            return this.builder.dateTime;
+        }
+
+        private MessageReadStatus getReadStatus() {
+            return this.builder.readStatus;
+        }
+
+        private String getSubject() {
+            return this.builder.subject;
+        }
+
+        private String getText() {
+            return this.builder.text;
+        }
+
+        private String getThreadId() {
+            return this.builder.threadId;
+        }
+
+        private Collection<BlackboardAttribute> getOtherAttributes() {
+            return this.builder.otherAttributes;
+        }
+
+        private static class Builder {
+
+            private String messageType;
+            private CommunicationDirection direction;
+            private String senderId;
+            private final List<String> recipientIdsList;
+            private long dateTime;
+            private MessageReadStatus readStatus;
+            private String subject;
+            private String text;
+            private String threadId;
+            private final Collection<BlackboardAttribute> otherAttributes;
+
+            public Builder(String messageType) {
+                this.messageType = messageType;
+                this.direction = CommunicationDirection.UNKNOWN;
+                this.senderId = "";
+                this.recipientIdsList = new ArrayList<>();
+                this.dateTime = 0L;
+                this.readStatus = MessageReadStatus.UNKNOWN;
+                this.subject = "";
+                this.text = "";
+                this.threadId = "";
+                this.otherAttributes = new ArrayList<>();
+            }
+
+            private void setDirection(CommunicationDirection direction) {
+                this.direction = direction;
+            }
+
+            private void setSenderId(String senderId) {
+                this.senderId = senderId;
+            }
+
+            private void addRecipientId(String recipientId) {
+                this.recipientIdsList.add(recipientId);
+            }
+
+            private void setDateTime(long dateTime) {
+                this.dateTime = dateTime;
+            }
+
+            private void setReadStatus(MessageReadStatus status) {
+                this.readStatus = status;
+            }
+
+            private void setText(String text) {
+                this.text = text;
+            }
+
+            private void addOtherAttributes(BlackboardAttribute attr) {
+                this.otherAttributes.add(attr);
+            }
+
+            private boolean isEmpty() {
+                return messageType.isEmpty() && senderId.isEmpty() && otherAttributes.isEmpty()
+                        && dateTime == 0L && recipientIdsList.isEmpty()
+                        && direction.equals(CommunicationDirection.UNKNOWN)
+                        && subject.isEmpty() && text.isEmpty() && threadId.isEmpty()
+                        && readStatus.equals(MessageReadStatus.UNKNOWN);
+            }
+
+            private Message build() {
+                return new Message(this);
+            }
+        }
+    }
+
     /**
      * All of the known XRY keys for message reports and their corresponding
      * blackboard attribute types, if any.

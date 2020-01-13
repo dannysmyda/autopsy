@@ -288,8 +288,6 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
             return this.builder.otherAttributes;
         }
 
-        //Manages and aggregates all of the parameters that will be used
-        //to call CommunicationArtifactsHelper.addCalllog.
         private static class Builder {
 
             private String callerId;
