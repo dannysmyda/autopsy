@@ -1,7 +1,7 @@
 /*
  * Autopsy Forensic Browser
  *
- * Copyright 2019 Basis Technology Corp.
+ * Copyright 2019-2020 Basis Technology Corp.
  * Contact: carrier <at> sleuthkit <dot> org
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,17 +19,17 @@
 package org.sleuthkit.autopsy.datasourceprocessors.xry;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collection;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.logging.Level;
 import org.sleuthkit.autopsy.coreutils.Logger;
+import org.sleuthkit.datamodel.Account;
+import org.sleuthkit.datamodel.Blackboard;
 import org.sleuthkit.datamodel.BlackboardAttribute;
-import org.sleuthkit.datamodel.BlackboardArtifact;
 import org.sleuthkit.datamodel.Content;
 import org.sleuthkit.datamodel.SleuthkitCase;
 import org.sleuthkit.datamodel.TskCoreException;
+import org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper;
 
 /**
  * Parses XRY Contacts-Contacts files and creates artifacts.
@@ -38,31 +38,72 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
     
     private static final Logger logger = Logger.getLogger(XRYContactsFileParser.class.getName());
 
-    //All of the known XRY keys for contacts.
-    private static final Map<String, BlackboardAttribute.ATTRIBUTE_TYPE> XRY_KEYS = 
-            new HashMap<String, BlackboardAttribute.ATTRIBUTE_TYPE>() {{
-        put("name", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_NAME);
-        put("tel", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER);
-        put("mobile", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_MOBILE);
-        put("home", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_HOME);
-        put("related application", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PROG_NAME);
-        put("address home", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_LOCATION);
-        put("email home", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_EMAIL_HOME);
-        put("deleted", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ISDELETED);
+    private enum XRYKey {
+        //This enum doubles down as a map for attribute types and also a
+        //Set for testing key membership.
+        NAME("name", null),
+        TEL("tel", null),
+        MOBILE("mobile", null),
+        HOME("home", null),
+        RELATED_APPLICATION("related application", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PROG_NAME),
+        ADDRESS_HOME("address home", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_LOCATION),
+        EMAIL_HOME("email home", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_EMAIL_HOME),
+        DELETED("deleted", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ISDELETED),
         
         //Ignoring or need more information to decide.
-        put("storage", null);
-        put("other", null);
-        put("picture", null);
-        put("index", null);
-        put("account name", null);
-        
-    }};
+        STORAGE("storage", null),
+        OTHER("other", null),
+        PICTURE("picture", null),
+        INDEX("index", null),
+        ACCOUNT_NAME("account name", null);
+
+        private final String name;
+        private final BlackboardAttribute.ATTRIBUTE_TYPE type;
+
+        XRYKey(String name, BlackboardAttribute.ATTRIBUTE_TYPE type) {
+            this.name = name;
+            this.type = type;
+        }
+
+        public BlackboardAttribute.ATTRIBUTE_TYPE getType() {
+            return type;
+        }
+
+        /**
+         * Indicates if the display name of the XRY key is a recognized type.
+         */
+        public static boolean contains(String key) {
+            try {
+                XRYKey.fromDisplayName(key);
+                return true;
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+        }
+
+        /**
+         * Matches the display name of the xry key to the appropriate enum type.
+         *
+         * It is assumed that XRY key string is recognized. Otherwise, an
+         * IllegalArgumentException is thrown. Test all membership with
+         * contains() before hand.
+         */
+        public static XRYKey fromDisplayName(String key) {
+            String normalizedKey = key.trim().toLowerCase();
+            for (XRYKey keyChoice : XRYKey.values()) {
+                if (normalizedKey.equals(keyChoice.name)) {
+                    return keyChoice;
+                }
+            }
+
+            throw new IllegalArgumentException(String.format("Key [%s] was not found."
+                    + " All keys should be tested with contains.", key));
+        }
+    }
     
     @Override
     boolean canProcess(XRYKeyValuePair pair) {
-        String normalizedKey = pair.getKey().toLowerCase();
-        return XRY_KEYS.containsKey(normalizedKey);
+        return XRYKey.contains(pair.getKey());
     }
 
     @Override
@@ -72,35 +113,142 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
     }
 
     /**
-     * Creates the appropriate blackboard attribute given a single XRY Key Value
-     * pair. 
+     * 
+     * @param builder
+     * @param pair 
      */
-    private Optional<BlackboardAttribute> getBlackboardAttribute(XRYKeyValuePair pair) {
-        String normalizedKey = pair.getKey().toLowerCase();
-        BlackboardAttribute.ATTRIBUTE_TYPE attrType = XRY_KEYS.get(normalizedKey);
-        if(attrType != null) {
-            return Optional.of(new BlackboardAttribute(attrType, PARSER_NAME, pair.getValue()));
+    private void addToBuilder(Contact.Builder builder, XRYKeyValuePair pair) {
+        XRYKey xryKey = XRYKey.fromDisplayName(pair.getKey());
+        switch(xryKey) {
+            case NAME:
+                builder.setName(pair.getValue());
+                break;
+            case TEL:
+                builder.setPhoneNumber(pair.getValue());
+                break;
+            case MOBILE:
+                builder.setMobilePhoneNumber(pair.getValue());
+                break;
+            case HOME:
+                builder.setHomePhoneNumber(pair.getValue());
+                break;
+            default:
+                if(xryKey.getType() != null) {
+                    builder.addOtherAttributes(new BlackboardAttribute(
+                            xryKey.getType(), PARSER_NAME, pair.getValue()));
+                } else {
+                    logger.log(Level.INFO, String.format("[XRY DSP] Key value pair "
+                    + "(in brackets) [ %s ] was recognized but we need "
+                    + "more data or time to finish implementation. Discarding... ", 
+                    pair));
+                }
         }
-
-        logger.log(Level.INFO, String.format("[XRY DSP] Key value pair "
-               + "(in brackets) [ %s ] was recognized but we need "
-               + "more data or time to finish implementation. Discarding... ", 
-               pair));
-        return Optional.empty();
     }
     
     @Override
-    void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException {
-        List<BlackboardAttribute> attributes = new ArrayList<>();
+    void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException, Blackboard.BlackboardException {
+        Contact.Builder builder = new Contact.Builder();
+        
         for(XRYKeyValuePair pair : keyValuePairs) {
-            Optional<BlackboardAttribute> attribute = getBlackboardAttribute(pair);
-            if(attribute.isPresent()) {
-                attributes.add(attribute.get());
-            }
+            addToBuilder(builder, pair);
         }
-        if(!attributes.isEmpty()) {
-            BlackboardArtifact artifact = parent.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_CONTACT);
-            artifact.addAttributes(attributes);
+        
+        if(!builder.isEmpty()) {
+            Contact contact = builder.build();
+            CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
+                    currentCase, "XRY DSP", parent, Account.Type.DEVICE);
+            
+            helper.addContact(
+                    contact.getName(), 
+                    contact.getPhoneNumber(), 
+                    contact.getHomePhoneNumber(), 
+                    contact.getMobilePhoneNumber(), 
+                    contact.getEmailAddress(), 
+                    contact.getOtherAttributes()
+            );
+        }
+    }
+    
+    private static class Contact {
+        
+        private final Contact.Builder builder;
+        
+        private Contact(Contact.Builder contactBuilder) {
+            builder = contactBuilder;
+        }
+        
+        private String getName() {
+            return this.builder.name;
+        }
+        
+        private String getPhoneNumber() {
+            return this.builder.phoneNumber;
+        }
+        
+        private String getHomePhoneNumber() {
+            return this.builder.homePhoneNumber;
+        }
+        
+        private String getMobilePhoneNumber() {
+            return this.builder.mobilePhoneNumber;
+        }
+        
+        private String getEmailAddress() {
+            return this.builder.emailAddress;
+        }
+        
+        private Collection<BlackboardAttribute> getOtherAttributes() {
+            return this.builder.otherAttributes;
+        }
+        
+        //Manages and aggregates all of the parameters that will be used
+        //to call CommunicationArtifactsHelper.addCalllog.
+        private static class Builder {
+            private String name;
+            private String phoneNumber;
+            private String homePhoneNumber;
+            private String mobilePhoneNumber;
+            private String emailAddress;
+            private final Collection<BlackboardAttribute> otherAttributes;
+            
+            public Builder() {
+                name = "";
+                phoneNumber = "";
+                homePhoneNumber = "";
+                mobilePhoneNumber = "";
+                emailAddress = "";
+                otherAttributes = new ArrayList<>();
+            }
+            
+            private void setName(String name) {
+                this.name = name;
+            }
+            
+            private void setPhoneNumber(String phoneNumber) {
+                this.phoneNumber = phoneNumber;
+            }
+            
+            private void setHomePhoneNumber(String homePhone) {
+                this.homePhoneNumber = homePhone;
+            }
+            
+            private void setMobilePhoneNumber(String mobilePhone) {
+                this.mobilePhoneNumber = mobilePhone;
+            }
+            
+            private void addOtherAttributes(BlackboardAttribute attr) {
+                otherAttributes.add(attr);
+            }
+            
+            private boolean isEmpty() {
+                return name.isEmpty() && phoneNumber.isEmpty() 
+                        && otherAttributes.isEmpty() && homePhoneNumber.isEmpty() 
+                        && mobilePhoneNumber.isEmpty() && emailAddress.isEmpty();
+            }
+            
+            private Contact build() {
+                return new Contact(this);
+            }
         }
     }
 }

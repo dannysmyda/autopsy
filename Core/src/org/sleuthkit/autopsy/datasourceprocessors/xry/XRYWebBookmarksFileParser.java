@@ -1,7 +1,7 @@
 /*
  * Autopsy Forensic Browser
  *
- * Copyright 2019 Basis Technology Corp.
+ * Copyright 2019-2020 Basis Technology Corp.
  * Contact: carrier <at> sleuthkit <dot> org
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,35 +19,74 @@
 package org.sleuthkit.autopsy.datasourceprocessors.xry;
 
 import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
+import org.sleuthkit.datamodel.Blackboard.BlackboardException;
 import org.sleuthkit.datamodel.BlackboardAttribute;
-import org.sleuthkit.datamodel.BlackboardArtifact;
 import org.sleuthkit.datamodel.Content;
 import org.sleuthkit.datamodel.SleuthkitCase;
 import org.sleuthkit.datamodel.TskCoreException;
+import org.sleuthkit.datamodel.blackboardutils.WebBrowserArtifactsHelper;
 
 /**
  * Parses XRY Web-Bookmark files and creates artifacts.
  */
 final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
+    
+    private enum XRYKey {
+        //This enum doubles down as a map for attribute types and also a
+        //Set for testing key membership.
+        APPLICATION("application", null),
+        DOMAIN("domain", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DOMAIN),
+        WEB_ADDRESS("web address", null);
 
-    //All known XRY keys for web bookmarks.
-    private static final Map<String, BlackboardAttribute.ATTRIBUTE_TYPE> XRY_KEYS
-            = new HashMap<String, BlackboardAttribute.ATTRIBUTE_TYPE>() {
-        {
-            put("web address", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_URL);
-            put("domain", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DOMAIN);
-            put("application", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PROG_NAME);
+        private final String name;
+        private final BlackboardAttribute.ATTRIBUTE_TYPE type;
+
+        XRYKey(String name, BlackboardAttribute.ATTRIBUTE_TYPE type) {
+            this.name = name;
+            this.type = type;
         }
-    };
+
+        public BlackboardAttribute.ATTRIBUTE_TYPE getType() {
+            return type;
+        }
+
+        /**
+         * Indicates if the display name of the XRY key is a recognized type.
+         */
+        public static boolean contains(String key) {
+            try {
+                XRYKey.fromDisplayName(key);
+                return true;
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+        }
+
+        /**
+         * Matches the display name of the xry key to the appropriate enum type.
+         *
+         * It is assumed that XRY key string is recognized. Otherwise, an
+         * IllegalArgumentException is thrown. Test all membership with
+         * contains() before hand.
+         */
+        public static XRYKey fromDisplayName(String key) {
+            String normalizedKey = key.trim().toLowerCase();
+            for (XRYKey keyChoice : XRYKey.values()) {
+                if (normalizedKey.equals(keyChoice.name)) {
+                    return keyChoice;
+                }
+            }
+
+            throw new IllegalArgumentException(String.format("Key [%s] was not found."
+                    + " All keys should be tested with contains.", key));
+        }
+    }
 
     @Override
     boolean canProcess(XRYKeyValuePair pair) {
-        String normalizedKey = pair.getKey().toLowerCase();
-        return XRY_KEYS.containsKey(normalizedKey);
+        return XRYKey.contains(pair.getKey());
     }
 
     @Override
@@ -57,28 +96,116 @@ final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
     }
 
     /**
-     * Creates the appropriate blackboard attribute given a single XRY Key Value
-     * pair.
+     * 
+     * @param builder
+     * @param pair 
      */
-    private Optional<BlackboardAttribute> getBlackboardAttribute(XRYKeyValuePair pair) {
-        String normalizedKey = pair.getKey().toLowerCase();
-        return Optional.of(new BlackboardAttribute(
-                XRY_KEYS.get(normalizedKey), 
-                PARSER_NAME, pair.getValue()));
+    private void addToBuilder(WebBookmark.Builder builder, XRYKeyValuePair pair) {
+        XRYKey xryKey = XRYKey.fromDisplayName(pair.getKey());
+        switch(xryKey) {
+            case APPLICATION:
+                builder.setProgName(pair.getValue());
+                break;
+            case WEB_ADDRESS:
+                builder.setUrl(pair.getValue());
+                break;
+            default:
+                builder.addOtherAttributes(new BlackboardAttribute(
+                        xryKey.getType(), PARSER_NAME,
+                        pair.getValue()
+                ));
+        }
     }
     
     @Override
-    void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException {
-        List<BlackboardAttribute> attributes = new ArrayList<>();
+    void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException, BlackboardException {
+        WebBookmark.Builder builder = new WebBookmark.Builder();
+        
         for(XRYKeyValuePair pair : keyValuePairs) {
-            Optional<BlackboardAttribute> attribute = getBlackboardAttribute(pair);
-            if(attribute.isPresent()) {
-                attributes.add(attribute.get());
-            }
+            addToBuilder(builder, pair);
         }
-        if(!attributes.isEmpty()) {
-            BlackboardArtifact artifact = parent.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_WEB_BOOKMARK);
-            artifact.addAttributes(attributes);
+        
+        if(!builder.isEmpty()) {
+            WebBookmark webBookmark = builder.build();
+            WebBrowserArtifactsHelper helper = new WebBrowserArtifactsHelper(
+                    currentCase, "XRY DSP", parent);
+            
+            helper.addWebBookmark(
+                    webBookmark.getUrl(),
+                    webBookmark.getTitle(),
+                    webBookmark.getCreationTime(),
+                    webBookmark.getProgName(),
+                    webBookmark.getOtherAttributes()
+            );
+        }
+    }
+    
+    private static class WebBookmark {
+        
+        private final WebBookmark.Builder builder;
+        
+        private WebBookmark(WebBookmark.Builder webBookmarkBuilder) {
+            builder = webBookmarkBuilder;
+        }
+        
+        private String getUrl() {
+            return this.builder.url;
+        }
+        
+        private String getTitle() {
+            return this.builder.title;
+        }
+        
+        private long getCreationTime() {
+            return this.builder.creationTime;
+        }
+        
+        private String getProgName() {
+            return this.builder.progName;
+        }
+        
+        private Collection<BlackboardAttribute> getOtherAttributes() {
+            return this.builder.otherAttributes;
+        }
+        
+        //Manages and aggregates all of the parameters that will be used
+        //to call CommunicationArtifactsHelper.addCalllog.
+        private static class Builder {
+            private String url;
+            private String title;
+            private long creationTime;
+            private String progName;
+            private final Collection<BlackboardAttribute> otherAttributes;
+            
+            private Builder() {
+                url = "";
+                title = "";
+                creationTime = 0;
+                progName = "";
+                otherAttributes = new ArrayList<>();
+            }
+            
+            private void setUrl(String url) {
+                this.url = url;
+            }
+            
+            private void setProgName(String progName) {
+                this.progName = progName;
+            }
+            
+            private void addOtherAttributes(BlackboardAttribute attr) {
+                otherAttributes.add(attr);
+            }
+            
+            private boolean isEmpty() {
+                return url.isEmpty() && title.isEmpty() 
+                        && creationTime == 0 && progName.isEmpty() 
+                        && otherAttributes.isEmpty();
+            }
+            
+            private WebBookmark build() {
+                return new WebBookmark(this);
+            }
         }
     }
 }

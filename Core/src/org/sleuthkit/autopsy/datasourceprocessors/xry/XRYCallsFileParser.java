@@ -62,6 +62,8 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
      * blackboard attribute types, if any.
      */
     private enum XryKey {
+        //This enum doubles down as a map for attribute types and also a
+        //Set for testing key membership.
         NAME_MATCHED("name (matched)", BlackboardAttribute.ATTRIBUTE_TYPE.TSK_NAME),
         TIME("time", null),
         DIRECTION("direction", null),
@@ -181,14 +183,6 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
 
     @Override
     void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException, BlackboardException {
-        //Using the methods of CommunicationArtifactsHelper effectively requires
-        //construction of a complex aggregate. A builder is used to alleviate this process 
-        //by decoupling the algorithm that parses the XRY data from the algorithm that
-        //manages all of the input parameters. Furthermore, the builder can manage the 
-        //appropriate defaults. By creating an Object,
-        //we can easily place the appropriate values in the correct positional
-        //arguments. It would be nice if the ArtifactHelpers would provide a service like this
-        //and accept objects in the API rather than an object representation.
         CallLog.Builder builder = new CallLog.Builder();
         
         for(XRYKeyValuePair pair : keyValuePairs) {
@@ -213,8 +207,9 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
     }
     
     /**
-     * Creates the appropriate blackboard attribute given a single XRY Key Value
-     * pair, if any. Most XRY keys are mapped to an attribute type in the enum above.
+     * 
+     * @param pair
+     * @param builder 
      */
     private void addToBuilder(XRYKeyValuePair pair, CallLog.Builder builder) {
         XryKey xryKey = XryKey.fromDisplayName(pair.getKey());
@@ -240,6 +235,9 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
                                 PARSER_NAME, pair.getValue()));
                 }
                 break;
+            //Although confusing, as these are also 'name spaces', it appears
+            //later versions of XRY realized having standardized lines was easier
+            //to read.
             case TO:
                 builder.addCallee(pair.getValue());
                 break;

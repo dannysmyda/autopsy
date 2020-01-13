@@ -286,9 +286,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
 
         while (reader.hasNextEntity()) {
             String xryEntity = reader.nextEntity();
-            List<XRYKeyValuePair> pairs = getXRYKeyValuePairs(xryEntity, reader, referenceNumbersSeen);
-            //Only create artifacts with non-empty attributes.
-            
+            List<XRYKeyValuePair> pairs = getXRYKeyValuePairs(xryEntity, reader, referenceNumbersSeen);       
             //Map them using a MessageBuilder.
             if (!attributes.isEmpty()) {
                 BlackboardArtifact artifact = parent.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_MESSAGE);
@@ -304,12 +302,12 @@ final class XRYMessagesFileParser implements XRYFileParser {
     private List<XRYKeyValuePair> getXRYKeyValuePairs(String xryEntity,
             XRYFileReader reader, Set<Integer> referenceValues) throws IOException {
         Queue<String> xryLines = new ArrayDeque<>(Arrays.asList(xryEntity.split("\n")));
+        
         //First line of the entity is the title, each XRY entity is non-empty.
         logger.log(Level.INFO, String.format("[XRY DSP] Processing [ %s ]", xryLines.poll()));
 
         List<XRYKeyValuePair> result = new ArrayList<>();
         String namespace = "";
-        //Used to unify segmented text.
         while(!xryLines.isEmpty()) {
             String xryLine = xryLines.poll();
             if (XryNamespace.contains(xryLine)) {
@@ -326,17 +324,13 @@ final class XRYMessagesFileParser implements XRYFileParser {
             if(validatePair(pair)) {
                 //Build up multiple lines.
                 StringBuilder builder = new StringBuilder(pair.getValue());
-                while (!xryLine.isEmpty()
-                        && !XRYKeyValuePair.isPair(xryLines.peek())
-                        && !XryNamespace.contains(xryLines.peek())) {
-                    builder.append(" ").append(xryLines.poll().trim());
-                }
+                concatMultiLineValue(builder, xryLines);
 
                 //Assume text and message are the only fields that can be segmented
                 //among multiple XRY entities.
                 if (pair.hasKey(XryKey.TEXT.getDisplayName())
                         || pair.hasKey(XryKey.MESSAGE.getDisplayName())) {
-                    //Will reuse the same builder to add any segmented text.
+                    //Reuse the same builder to add any segmented text.
                     getSegmentedText(xryEntity, reader, referenceValues, builder);
                 }
                 
@@ -346,6 +340,14 @@ final class XRYMessagesFileParser implements XRYFileParser {
         }
 
         return result;
+    }
+    
+    private void concatMultiLineValue(StringBuilder builder, Queue<String> lines) {
+        while (!lines.isEmpty()
+                && !XRYKeyValuePair.isPair(lines.peek())
+                && !XryNamespace.contains(lines.peek())) {
+            builder.append(" ").append(lines.poll().trim());
+        }
     }
     
     /**
@@ -446,7 +448,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
             while(!nextXryEntityLines.isEmpty()) {
                 String nextXryEntityLine = nextXryEntityLines.poll();
                 //We are searching for TEXT and MESSAGE pairs, continue if 
-                //this line is not these pairs.
+                //this line is not a pair.
                 if(!XRYKeyValuePair.isPair(nextXryEntityLine)) {
                     continue;
                 }
@@ -457,11 +459,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
                     || pair.hasKey(XryKey.MESSAGE.getDisplayName())) {
                     builder.append(" ").append(pair.getValue());
                     //Build up multi-line text.
-                    while (!nextXryEntityLines.isEmpty()
-                            && !XRYKeyValuePair.isPair(nextXryEntityLines.peek())
-                            && !XryNamespace.contains(nextXryEntityLines.peek())) {
-                        builder.append(" ").append(nextXryEntityLines.poll().trim());
-                    }
+                    concatMultiLineValue(builder, nextXryEntityLines);
                 }
             }
 
