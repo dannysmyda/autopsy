@@ -49,6 +49,30 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
         return false;
     }
 
+    @Override
+    void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException, Blackboard.BlackboardException {
+        Contact.Builder builder = new Contact.Builder();
+
+        for (XRYKeyValuePair pair : keyValuePairs) {
+            addToBuilder(builder, pair);
+        }
+
+        if (builder.hasRequiredFields()) {
+            Contact contact = builder.build();
+            CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
+                    currentCase, "XRY DSP", parent, Account.Type.DEVICE);
+
+            helper.addContact(
+                    contact.getName(),
+                    contact.getPhoneNumber(),
+                    contact.getHomePhoneNumber(),
+                    contact.getMobilePhoneNumber(),
+                    contact.getEmailAddress(),
+                    contact.getOtherAttributes()
+            );
+        }
+    }
+    
     /**
      *
      * @param builder
@@ -79,30 +103,6 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
                             + "more data or time to finish implementation. Discarding... ",
                             pair));
                 }
-        }
-    }
-
-    @Override
-    void makeArtifact(List<XRYKeyValuePair> keyValuePairs, Content parent, SleuthkitCase currentCase) throws TskCoreException, Blackboard.BlackboardException {
-        Contact.Builder builder = new Contact.Builder();
-
-        for (XRYKeyValuePair pair : keyValuePairs) {
-            addToBuilder(builder, pair);
-        }
-
-        if (!builder.isEmpty()) {
-            Contact contact = builder.build();
-            CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
-                    currentCase, "XRY DSP", parent, Account.Type.DEVICE);
-
-            helper.addContact(
-                    contact.getName(),
-                    contact.getPhoneNumber(),
-                    contact.getHomePhoneNumber(),
-                    contact.getMobilePhoneNumber(),
-                    contact.getEmailAddress(),
-                    contact.getOtherAttributes()
-            );
         }
     }
 
@@ -140,7 +140,7 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
         private Collection<BlackboardAttribute> getOtherAttributes() {
             return this.builder.otherAttributes;
         }
-        
+
         private static class Builder {
 
             private String name;
@@ -179,10 +179,11 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
                 otherAttributes.add(attr);
             }
 
-            private boolean isEmpty() {
-                return name.isEmpty() && phoneNumber.isEmpty()
-                        && otherAttributes.isEmpty() && homePhoneNumber.isEmpty()
-                        && mobilePhoneNumber.isEmpty() && emailAddress.isEmpty();
+            private boolean hasRequiredFields() {
+                //Name must be present and atleast one phone or email address.
+                return !name.isEmpty() && (!phoneNumber.isEmpty() 
+                        || !mobilePhoneNumber.isEmpty() 
+                        || !homePhoneNumber.isEmpty() || !emailAddress.isEmpty());
             }
 
             private Contact build() {

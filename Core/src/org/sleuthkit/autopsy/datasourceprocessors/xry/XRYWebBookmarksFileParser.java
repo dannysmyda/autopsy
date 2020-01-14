@@ -74,7 +74,7 @@ final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
             addToBuilder(builder, pair);
         }
 
-        if (!builder.isEmpty()) {
+        if (builder.hasRequiredFields()) {
             WebBookmark webBookmark = builder.build();
             WebBrowserArtifactsHelper helper = new WebBrowserArtifactsHelper(
                     currentCase, "XRY DSP", parent);
@@ -150,10 +150,9 @@ final class XRYWebBookmarksFileParser extends AbstractSingleEntityParser {
                 otherAttributes.add(attr);
             }
 
-            private boolean isEmpty() {
-                return url.isEmpty() && title.isEmpty()
-                        && creationTime == 0 && progName.isEmpty()
-                        && otherAttributes.isEmpty();
+            private boolean hasRequiredFields() {
+                //Only the URL field is needed.
+                return !url.isEmpty();
             }
 
             private WebBookmark build() {

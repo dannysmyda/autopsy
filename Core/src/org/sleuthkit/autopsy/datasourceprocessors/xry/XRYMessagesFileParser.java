@@ -103,7 +103,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
                 addToBuilder(builder, pair);
             }
 
-            if (!builder.isEmpty()) {
+            if (builder.hasRequiredItems()) {
                 Message message = builder.build();
                 CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
                         currentCase, PARSER_NAME, parent, Account.Type.DEVICE);
@@ -147,7 +147,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
                 namespace = xryLine.trim();
                 continue;
             } else if (!XRYKeyValuePair.isPair(xryLine)) {
-                logger.log(Level.SEVERE, String.format("[%s] Expected a key value "
+                logger.log(Level.WARNING, String.format("[%s] Expected a key value "
                         + "pair on this line (in brackets) [ %s ], but one was not detected."
                         + " Discarding...", PARSER_NAME, xryLine));
                 continue;
@@ -182,7 +182,8 @@ final class XRYMessagesFileParser implements XRYFileParser {
     private void buildMultiLineValue(StringBuilder builder, Queue<String> lines) {
         while (!lines.isEmpty()
                 && !XRYKeyValuePair.isPair(lines.peek())
-                && !XryNamespace.contains(lines.peek())) {
+                && !XryNamespace.contains(lines.peek())
+                && !XryMetaKey.contains(lines.peek())) {
             builder.append(" ").append(lines.poll().trim());
         }
     }
@@ -239,7 +240,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
                     + "been seen. This means that the segments are not "
                     + "contiguous. Any segments contiguous with this "
                     + "one will be aggregated and another "
-                    + "(otherwise duplicate) artifact will be created.",
+                    + "(otherwise duplicate) artifact may be created.",
                     PARSER_NAME, referenceNumber.get()));
         }
 
@@ -428,6 +429,15 @@ final class XRYMessagesFileParser implements XRYFileParser {
             case TEXT:
             case MESSAGE:
                 builder.setText(pair.getValue());
+                break;
+            case DIRECTION:
+                if(normalizedValue.equals("incoming")) {
+                    builder.setDirection(CommunicationDirection.INCOMING);
+                } else if(normalizedValue.equals("outgoing")) {
+                    builder.setDirection(CommunicationDirection.OUTGOING);
+                } else {
+                    builder.setDirection(CommunicationDirection.UNKNOWN);
+                }
                 break;
             default:
                 //Otherwise, the XryKey enum contains the correct BlackboardAttribute
@@ -634,12 +644,8 @@ final class XRYMessagesFileParser implements XRYFileParser {
                 this.otherAttributes.add(attr);
             }
 
-            private boolean isEmpty() {
-                return messageType.isEmpty() && senderId.isEmpty() && otherAttributes.isEmpty()
-                        && dateTime == 0L && recipientIdsList.isEmpty()
-                        && direction.equals(CommunicationDirection.UNKNOWN)
-                        && subject.isEmpty() && text.isEmpty() && threadId.isEmpty()
-                        && readStatus.equals(MessageReadStatus.UNKNOWN);
+            private boolean hasRequiredItems() {
+                return !messageType.isEmpty() && !text.isEmpty();
             }
 
             private Message build() {

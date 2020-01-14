@@ -59,7 +59,8 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
 
     @Override
     boolean canProcess(XRYKeyValuePair pair) {
-        return XryKey.contains(pair.getKey());
+        return false;
+        //return XryKey.contains(pair.getKey());
     }
 
     @Override
@@ -75,7 +76,7 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
             addToBuilder(pair, builder);
         }
 
-        if (!builder.isEmpty()) {
+        if (builder.hasRequiredFields()) {
             CallLog callLog = builder.build();
             CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
                     currentCase, "XRY DSP", parent, Account.Type.DEVICE);
@@ -328,10 +329,8 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
                 otherAttributes.add(attr);
             }
 
-            private boolean isEmpty() {
-                return callerId.isEmpty() && calleeList.isEmpty() && otherAttributes.isEmpty()
-                        && startTime == 0L && endTime == 0L && callType.equals(CallMediaType.UNKNOWN)
-                        && direction.equals(CommunicationDirection.UNKNOWN);
+            private boolean hasRequiredFields() {
+                return !callerId.isEmpty() || !calleeList.isEmpty();
             }
 
             private CallLog build() {
