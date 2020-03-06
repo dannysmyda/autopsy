@@ -205,10 +205,10 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
                     //Apply the namespace
                     switch (xryNamespace) {
                         case FROM:
-                            if(callerId != null) {
+                            if (callerId != null) {
                                 otherAttributes.add(new BlackboardAttribute(
-                                    BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_FROM,
-                                    PARSER_NAME, pair.getValue()));
+                                        BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_FROM,
+                                        PARSER_NAME, pair.getValue()));
                             } else {
                                 callerId = pair.getValue();
                             }
@@ -229,10 +229,10 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
                     calleeList.add(pair.getValue());
                     break;
                 case FROM:
-                    if(callerId != null) {
+                    if (callerId != null) {
                         otherAttributes.add(new BlackboardAttribute(
-                            BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_FROM,
-                            PARSER_NAME, pair.getValue()));
+                                BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER_FROM,
+                                PARSER_NAME, pair.getValue()));
                     } else {
                         callerId = pair.getValue();
                     }
@@ -273,32 +273,61 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
 
         // Make sure we have the required fields, otherwise the CommHelper will
         // complain about illegal arguments.
-        if (callerId != null || !calleeList.isEmpty()) {
+        
+        // These are all the invalid combinations.
+        if (callerId == null && calleeList.isEmpty()
+                || direction == CommunicationDirection.INCOMING && callerId == null
+                || direction == CommunicationDirection.OUTGOING && calleeList.isEmpty()) {
+
+            // If the combo is invalid, just make an artifact with what we've got.
+            if (direction != CommunicationDirection.UNKNOWN) {
+                otherAttributes.add(new BlackboardAttribute(
+                        BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DIRECTION,
+                        PARSER_NAME, direction.getDisplayName()));
+            }
+
+            if (startTime > 0L) {
+                otherAttributes.add(new BlackboardAttribute(
+                        BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME_START,
+                        PARSER_NAME, startTime));
+            }
+
+            // If the DIRECTION check failed, just manually create accounts
+            // for these phones. Note, there is no need to create relationships.
+            // If both callerId and calleeList were non-null/non-empty, then 
+            // the check above would have directed us to the else block.
+            if (callerId != null) {
+                currentCase.getCommunicationsManager().createAccountFileInstance(
+                        Account.Type.PHONE, callerId, PARSER_NAME, parent);
+
+                otherAttributes.add(new BlackboardAttribute(
+                        BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER,
+                        PARSER_NAME, callerId));
+            }
+
+            for (String phone : calleeList) {
+                currentCase.getCommunicationsManager().createAccountFileInstance(
+                        Account.Type.PHONE, phone, PARSER_NAME, parent);
+
+                otherAttributes.add(new BlackboardAttribute(
+                        BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER,
+                        PARSER_NAME, phone));
+            }
+
+            if (!otherAttributes.isEmpty()) {
+                BlackboardArtifact artifact = parent.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_CALLLOG);
+                artifact.addAttributes(otherAttributes);
+
+                currentCase.getBlackboard().postArtifact(artifact, PARSER_NAME);
+            }
+        } else {
+
+            // Otherwise we can safely use the helper.
             CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
                     currentCase, PARSER_NAME, parent, Account.Type.DEVICE);
 
             helper.addCalllog(direction, callerId, calleeList, startTime,
                     endTime, callType, otherAttributes);
-        } else {
-            // Otherwise, just make an artifact with what we've got.
-            if(direction != CommunicationDirection.UNKNOWN) {
-                otherAttributes.add(new BlackboardAttribute(
-                        BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DIRECTION,
-                    PARSER_NAME, direction.getDisplayName()));
-            }
-            
-            if(startTime > 0L) {
-                otherAttributes.add(new BlackboardAttribute(
-                        BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME_START,
-                    PARSER_NAME, startTime));
-            }
-            
-            if(!otherAttributes.isEmpty()) {
-                BlackboardArtifact artifact = parent.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_CALLLOG);
-                artifact.addAttributes(otherAttributes);
-                
-                currentCase.getBlackboard().postArtifact(artifact, PARSER_NAME);
-            }
         }
     }
 

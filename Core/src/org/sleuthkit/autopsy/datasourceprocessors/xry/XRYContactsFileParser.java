@@ -100,6 +100,10 @@ final class XRYContactsFileParser extends AbstractSingleEntityParser {
                     if (xryKey.getType() != null) {
                         additionalAttributes.add(new BlackboardAttribute(xryKey.getType(),
                                 PARSER_NAME, pair.getValue()));
+                                           
+                        if(xryKey == XryKey.EMAIL_HOME) {
+                            hasAnEmail = true;
+                        }
                     }
 
                     logger.log(Level.INFO, String.format("[XRY DSP] Key value pair "
