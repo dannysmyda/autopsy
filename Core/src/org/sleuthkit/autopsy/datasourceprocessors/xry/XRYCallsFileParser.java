@@ -324,7 +324,7 @@ final class XRYCallsFileParser extends AbstractSingleEntityParser {
 
             // Otherwise we can safely use the helper.
             CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
-                    currentCase, PARSER_NAME, parent, Account.Type.DEVICE);
+                    currentCase, PARSER_NAME, parent, Account.Type.PHONE);
 
             helper.addCalllog(direction, callerId, calleeList, startTime,
                     endTime, callType, otherAttributes);

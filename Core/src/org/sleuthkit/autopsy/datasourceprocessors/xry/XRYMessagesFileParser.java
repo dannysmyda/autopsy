@@ -429,7 +429,7 @@ final class XRYMessagesFileParser implements XRYFileParser {
             }
 
             CommunicationArtifactsHelper helper = new CommunicationArtifactsHelper(
-                    currentCase, PARSER_NAME, parent, Account.Type.DEVICE);
+                    currentCase, PARSER_NAME, parent, Account.Type.PHONE);
 
             helper.addMessage(messageType, direction, senderId, recipientIdsList, 
                     dateTime, readStatus, subject, text, threadId, otherAttributes);
