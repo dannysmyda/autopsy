@@ -19,7 +19,9 @@
 package org.sleuthkit.autopsy.datasourceprocessors.xry;
 
 import java.io.IOException;
+import org.sleuthkit.datamodel.Blackboard.BlackboardException;
 import org.sleuthkit.datamodel.Content;
+import org.sleuthkit.datamodel.SleuthkitCase;
 import org.sleuthkit.datamodel.TskCoreException;
 
 /**
@@ -40,7 +42,7 @@ interface XRYFileParser {
      * @throws IOException If an I/O error occurs during reading.
      * @throws TskCoreException If an error occurs during artifact creation.
      */
-    void parse(XRYFileReader reader, Content parent) throws IOException, TskCoreException;
+    void parse(XRYFileReader reader, Content parent, SleuthkitCase currentCase) throws IOException, TskCoreException, BlackboardException;
     
 }
     
