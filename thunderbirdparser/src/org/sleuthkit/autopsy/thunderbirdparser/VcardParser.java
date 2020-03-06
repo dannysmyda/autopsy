@@ -214,42 +214,35 @@ final class VcardParser {
         
         BlackboardArtifact artifact = null;
         
-        // If there are zero phone or email attributes, then this artifact cannot
-        // be helped by the CommHelper (Invalid and illegal, according to its API).
-        // Instead, just create the artifact manually.
         if(hasAtleastOnePhoneOrEmailAttribute) {
-            // VCards can have more than one email, but CommHelper API only accepts a
-            // single email. So, the other emails need to spill into the 
-            // 'otherAttributes' list. Since all positional arguments are nullable, 
-            // why not just pass everything in that list?
-            helper.addContact(null, null, null, null, null, attributes);
+            // All arguments are nullable so long as a required type is available 
+            // in the attributes list, hence the hasAtleastOnePhoneOrEmailAttribute
+            // check.
+            artifact = helper.addContact(null, null, null, null, null, attributes);
+            extractPhotos(vcard, abstractFile, artifact);
         } else if(!attributes.isEmpty()) {
-            // Manually add the artifact if any attributes, other than email and
-            // phone were found.
+            // If there are zero phone or email attributes, then this artifact cannot
+            // be helped by the CommHelper (Invalid and illegal, according to its API).
+            // Instead, just create the artifact manually.
    
             org.sleuthkit.datamodel.Blackboard tskBlackboard = tskCase.getBlackboard();
-            try {
-                // Create artifact if it doesn't already exist.
-                if (!tskBlackboard.artifactExists(abstractFile, BlackboardArtifact.ARTIFACT_TYPE.TSK_CONTACT, attributes)) {
-                    artifact = abstractFile.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_CONTACT);
-                    artifact.addAttributes(attributes);
+            // Create artifact if it doesn't already exist.
+            if (!tskBlackboard.artifactExists(abstractFile, BlackboardArtifact.ARTIFACT_TYPE.TSK_CONTACT, attributes)) {
+                artifact = abstractFile.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_CONTACT);
+                artifact.addAttributes(attributes);
+                
+                extractPhotos(vcard, abstractFile, artifact);
 
-                     extractPhotos(vcard, abstractFile, artifact);
-
-                    // Index the artifact for keyword search.
-                    try {
-                        blackboard.postArtifact(artifact,  EmailParserModuleFactory.getModuleName());
-                    } catch (Blackboard.BlackboardException ex) {
-                        logger.log(Level.SEVERE, "Unable to index blackboard artifact " + artifact.getArtifactID(), ex); //NON-NLS
-                        MessageNotifyUtil.Notify.error(Bundle.VcardParser_addContactArtifact_indexError(), artifact.getDisplayName());
-                    }
+                // Index the artifact for keyword search.
+                try {
+                    blackboard.postArtifact(artifact,  EmailParserModuleFactory.getModuleName());
+                } catch (Blackboard.BlackboardException ex) {
+                    logger.log(Level.SEVERE, "Unable to index blackboard artifact " + artifact.getArtifactID(), ex); //NON-NLS
+                    MessageNotifyUtil.Notify.error(Bundle.VcardParser_addContactArtifact_indexError(), artifact.getDisplayName());
                 }
-            } catch (TskCoreException ex) {
-                logger.log(Level.SEVERE, String.format("Failed to create contact artifact for vCard file '%s' (id=%d).",
-                        abstractFile.getName(), abstractFile.getId()), ex); //NON-NLS
             }
         }
-
+        
         return artifact;
     }
     
