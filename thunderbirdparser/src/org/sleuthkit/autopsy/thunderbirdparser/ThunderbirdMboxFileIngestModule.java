@@ -359,7 +359,7 @@ public final class ThunderbirdMboxFileIngestModule implements FileIngestModule {
         try {
             VcardParser parser = new VcardParser(currentCase, context);
             parser.parse(abstractFile);
-        } catch (IOException | NoCurrentCaseException | TskCoreException | Blackboard.BlackboardException ex) {
+        } catch (IOException | NoCurrentCaseException ex) {
             logger.log(Level.WARNING, String.format("Exception while parsing the file '%s' (id=%d).", abstractFile.getName(), abstractFile.getId()), ex); //NON-NLS
             return ProcessResult.OK;
         }
