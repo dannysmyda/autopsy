@@ -41,6 +41,7 @@ import org.sleuthkit.datamodel.AbstractFile;
 import org.sleuthkit.datamodel.Content;
 import org.sleuthkit.datamodel.TskCoreException;
 import org.sleuthkit.datamodel.TskData;
+import java.util.ArrayList;
 
 /**
  * CaseUcoReportModule generates a report in CASE-UCO format. This module will 
@@ -198,6 +199,115 @@ public final class CaseUcoReportModule implements GeneralReportModule {
             CaseUcoReportGenerator generator) throws IOException, TskCoreException {
         
         Deque<Content> stack = new ArrayDeque<>();
+        stack.addAll(dataSource.getChildren());
+
+        //Depth First Search the data source tree.
+        while(!stack.isEmpty()) {
+            Content current = stack.pop();
+            if(current instanceof AbstractFile) {
+                AbstractFile f = (AbstractFile) (current);
+                if(SUPPORTED_TYPES.contains(f.getMetaType().getValue())) {
+                    generator.addFile(f, dataSource);   
+                }
+            }
+
+            for(Content child : current.getChildren()) {
+                stack.push(child);
+            }
+        }
+        
+                Deque<Content> stack = new ArrayDeque<>();
+        stack.addAll(dataSource.getChildren());
+
+        //Depth First Search the data source tree.
+        while(!stack.isEmpty()) {
+            Content current = stack.pop();
+            if(current instanceof AbstractFile) {
+                AbstractFile f = (AbstractFile) (current);
+                if(SUPPORTED_TYPES.contains(f.getMetaType().getValue())) {
+                    generator.addFile(f, dataSource);   
+                }
+            }
+
+            for(Content child : current.getChildren()) {
+                stack.push(child);
+            }
+        }
+        
+                Deque<Content> stack = new ArrayDeque<>();
+        stack.addAll(dataSource.getChildren());
+
+        //Depth First Search the data source tree.
+        while(!stack.isEmpty()) {
+            Content current = stack.pop();
+            if(current instanceof AbstractFile) {
+                AbstractFile f = (AbstractFile) (current);
+                if(SUPPORTED_TYPES.contains(f.getMetaType().getValue())) {
+                    generator.addFile(f, dataSource);   
+                }
+            }
+
+            for(Content child : current.getChildren()) {
+                stack.push(child);
+            }
+        }
+        
+                Deque<Content> stack = new ArrayDeque<>();
+        stack.addAll(dataSource.getChildren());
+
+        //Depth First Search the data source tree.
+        while(!stack.isEmpty()) {
+            Content current = stack.pop();
+            if(current instanceof AbstractFile) {
+                AbstractFile f = (AbstractFile) (current);
+                if(SUPPORTED_TYPES.contains(f.getMetaType().getValue())) {
+                    generator.addFile(f, dataSource);   
+                }
+            }
+
+            for(Content child : current.getChildren()) {
+                stack.push(child);
+            }
+        }
+        
+        
+                Deque<Content> stack = new ArrayDeque<>();
+        stack.addAll(dataSource.getChildren());
+
+        //Depth First Search the data source tree.
+        while(!stack.isEmpty()) {
+            Content current = stack.pop();
+            if(current instanceof AbstractFile) {
+                AbstractFile f = (AbstractFile) (current);
+                if(SUPPORTED_TYPES.contains(f.getMetaType().getValue())) {
+                    generator.addFile(f, dataSource);   
+                }
+            }
+
+            for(Content child : current.getChildren()) {
+                stack.push(child);
+            }
+        }
+        
+                Deque<Content> stack = new ArrayDeque<>();
+        stack.addAll(dataSource.getChildren());
+
+        //Depth First Search the data source tree.
+        while(!stack.isEmpty()) {
+            Content current = stack.pop();
+            if(current instanceof AbstractFile) {
+                AbstractFile f = (AbstractFile) (current);
+                if(SUPPORTED_TYPES.contains(f.getMetaType().getValue())) {
+                    generator.addFile(f, dataSource);   
+                }
+            }
+
+            for(Content child : current.getChildren()) {
+                stack.push(child);
+            }
+        }
+        
+                Deque<Content> stack = new ArrayDeque<>();
         stack.addAll(dataSource.getChildren());
 
         //Depth First Search the data source tree.
